@@ -16,8 +16,8 @@ function testStore(seed=123){
         const result=await fn({
           async getGame(){return pending;},
           async setGame(g){pending=g;},
-          async getReceipt(k){return receipts.get(k);},
-          async setReceipt(k,v){pendingReceipts.set(k,v);}
+          async getReceipt(k,h){const found=receipts.get(k);if(found&&found.hash!==h)throw Error('requestId reused for another command');return found?.result||null;},
+          async setReceipt(k,v,h){pendingReceipts.set(k,{hash:h,result:v});}
         });
         game=pending;for(const [k,v] of pendingReceipts)receipts.set(k,v);
         return result;
@@ -71,4 +71,10 @@ test('rejects malformed identity, unknown choice, client-controlled balance and 
  await assert.rejects(()=>executeGameCommand({store,userId:uid,command:'recover',answers:[0],requestId:'bad-recovery'}),/recovery answers/);
  const snapshot=await executeGameCommand({store,userId:uid,command:'snapshot',balance:999999,seed:0});
  assert.equal(snapshot.balance,1000);
+});
+
+test('idempotency key cannot be reused for a different command',async()=>{
+ const store=testStore();
+ await executeGameCommand({store,userId:uid,command:'start',caseId:id,requestId:'shared-key'});
+ await assert.rejects(()=>executeGameCommand({store,userId:uid,command:'start',caseId:'brand-backlash',requestId:'shared-key'}),/requestId reused/);
 });

@@ -3,7 +3,7 @@
  * database transaction with a per-player lock and persisted idempotency keys.
  * This file does not implement a live database adapter or HTTP endpoint.
  */
-import {randomBytes} from 'node:crypto';
+import {randomBytes,createHash} from 'node:crypto';
 import {CASES,RECOVERY_QUESTIONS} from '../cases.mjs';
 import {
   createGame, startCase, chooseStep, completeChain, completeRecovery,
@@ -48,9 +48,12 @@ export async function executeGameCommand({store,userId,command,requestId,caseId,
   if(!store||typeof store.transaction!=='function')throw new Error('Authoritative store unavailable');
   if(!['snapshot','start','choose','recover'].includes(command))throw new Error('Unknown command');
   if(command!=='snapshot')requireString(requestId,'requestId',96);
+  const requestHash=command==='snapshot'?null:createHash('sha256')
+    .update(JSON.stringify({command,caseId:caseId??null,choiceId:choiceId??null,answers:answers??null}))
+    .digest('hex');
   return store.transaction(uid,async tx=>{
     if(command!=='snapshot'){
-      const receipt=await tx.getReceipt(requestId);
+      const receipt=await tx.getReceipt(requestId,requestHash);
       if(receipt)return receipt;
     }
     let game=await tx.getGame();
@@ -79,7 +82,7 @@ export async function executeGameCommand({store,userId,command,requestId,caseId,
     }
     await tx.setGame(game);
     const result=publicGameView(game,now);
-    await tx.setReceipt(requestId,result);
+    await tx.setReceipt(requestId,result,requestHash);
     return result;
   });
 }
