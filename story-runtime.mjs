@@ -94,7 +94,7 @@ const data = {
 export const STORYLINES = Object.freeze(data);
 
 function artPath(caseId, suffix) {
-  return `/assets/scenes/${caseId}/${suffix}.webp`;
+  return `/assets/scenes/${caseId}/${suffix}.${caseId === "streaming-pivot" ? "jpg" : "webp"}`;
 }
 
 export function narrativeScene(caseId, phase, { round, band } = {}) {

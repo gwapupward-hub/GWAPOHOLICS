@@ -1,4 +1,5 @@
 import { BOT_USERNAME } from "./config.mjs";
+import { cinematicScene, homeNarrator, cinematicMotionClass, toggleCinematicMotion } from "./cinematic-view.mjs";
 import { CASES, DIMENSIONS, RECOVERY_QUESTIONS } from "./cases.mjs";
 import {
   STORAGE_KEY, MIN_PLAY_BALANCE, STARTING_COINS, RECOVERY_REWARD,
@@ -121,7 +122,7 @@ return `<div class="arcade-home page-enter">
 <section class="arcade-hero"><div class="arcade-orbit">G</div><div class="arcade-star star-a">✦</div><div class="arcade-star star-b">✦</div>
 <div class="arcade-hero-inside"><span>THE WORLD IS YOUR BOARDROOM</span><h1>MAKE<br>THE <em>CALL.</em></h1><p>Big decisions. Bigger consequences.<br>Think fast. Build smart.</p>
 ${isLocked(game)?`<button class="arcade-button is-orange" data-action="nav" data-view="recovery">START YOUR COMEBACK <b>→</b></button>`:next?`<button class="arcade-button" data-action="open-case" data-case="${next.id}">${game.draft?.path.length?"CONTINUE MISSION":"PLAY NOW"} <b>→</b></button>`:`<button class="arcade-button" data-action="nav" data-view="profile">YOUR LEGACY <b>→</b></button>`}</div></section>
-<div class="arcade-stats"><div><span>YOUR CAPITAL</span><strong>◉ ${coins(game.balance)}<small> G</small></strong></div><div><span>MISSIONS</span><strong>${done}<small> / 5</small></strong></div></div>
+${homeNarrator()}<div class="arcade-stats"><div><span>YOUR CAPITAL</span><strong>◉ ${coins(game.balance)}<small> G</small></strong></div><div><span>MISSIONS</span><strong>${done}<small> / 5</small></strong></div></div>
 <div class="arcade-how"><div>⚡</div><span><b>HOW TO PLAY</b><small>Read the problem → make a call → watch what happens. Four moves finish a mission.</small></span></div>
 <div class="arcade-section-title"><strong>UP NEXT</strong><small>${prog}% COMPLETE</small></div>
 ${next?`<button class="arcade-next" data-action="open-case" data-case="${next.id}"><b>${next.number}</b><span><small>${esc(next.category.toUpperCase())} · ${next.minutes} MIN</small><strong>${esc(next.title)}</strong><i>${esc(next.hook)}</i></span><em>↗</em></button>`:`<div class="arcade-next"><strong>Season 01 complete. Your choices shaped your legacy.</strong></div>`}
@@ -144,7 +145,7 @@ function caseList() {
 function caseBrief(entry){
 return `<div class="arcade-flow page-enter"><div class="arcade-flowtop"><button data-action="nav" data-view="home">← BACK</button><span>MISSION ${entry.number} / 05</span></div>
 <div class="arcade-new">NEW MISSION UNLOCKED <b>✦</b></div>
-<div class="arcade-emblem"><strong>${entry.number}</strong><span>★</span></div><h1 class="arcade-title">${esc(entry.title.toUpperCase())}<em>.</em></h1><p class="arcade-hook">${esc(entry.hook)}</p>
+${cinematicScene(entry,"intro") || `<div class="arcade-emblem"><strong>${entry.number}</strong><span>★</span></div>`}<h1 class="arcade-title">${esc(entry.title.toUpperCase())}<em>.</em></h1><p class="arcade-hook">${esc(entry.hook)}</p>
 <div class="arcade-story"><div><strong>THE SITUATION</strong><small>${esc(entry.era)}</small></div><p>${esc(entry.story)}</p></div>
 <div class="arcade-evidence">${evidenceFor(entry,game.seed).slice(0,3).map(e=>`<div><small>${esc(e.label)}</small><b>${esc(e.value)}</b></div>`).join("")}</div>
 <p class="arcade-tip">4 quick moves. Every decision changes what happens next.</p><button class="arcade-button" data-action="decide">LET'S DO BUSINESS <b>→</b></button><p class="arcade-fine">Your coins settle only after all four moves. All outcomes are fictional.</p></div>`;
@@ -155,7 +156,7 @@ const step=stageView(entry,game.draft.path,game.seed);
 return `<div class="arcade-flow page-enter"><div class="arcade-flowtop"><button data-action="nav" data-view="home">← PAUSE</button><span>MISSION ${entry.number}</span></div>
 <div class="arcade-round"><strong>ROUND ${step.index+1}</strong><span>OF ${step.total}</span></div>
 <div class="arcade-meter">${Array.from({length:step.total},(_,i)=>`<i class="${i<step.index?"done":i===step.index?"now":""}"></i>`).join("")}</div>
-<div class="arcade-label">⚡ ${step.index===0?"YOU'RE THE BOSS":"THE PLOT THICKENS"}</div><div class="arcade-prompt">${step.setup?`<p>${esc(step.setup)}</p>`:""}<h1>${esc(step.prompt)}</h1></div>
+${cinematicScene(entry,"decision",{round:step.index})}<div class="arcade-label">⚡ ${step.index===0?"YOU'RE THE BOSS":"THE PLOT THICKENS"}</div><div class="arcade-prompt">${step.setup?`<p>${esc(step.setup)}</p>`:""}<h1>${esc(step.prompt)}</h1></div>
 <div class="arcade-pick">WHAT'S YOUR MOVE? <small>TAP ONE</small></div>
 <div class="arcade-choices">${step.choices.map((c,i)=>`<button class="arcade-choice" data-action="choose" data-choice="${esc(c.id)}"><span class="arcade-letter">${String.fromCharCode(65+i)}</span><span><strong>${esc(c.label)}</strong><small>${esc(c.detail)}</small></span><b>↗</b></button>`).join("")}</div>
 <p class="arcade-fine">Your choice locks immediately. Coin results come after round 4.</p></div>`;
@@ -164,15 +165,15 @@ return `<div class="arcade-flow page-enter"><div class="arcade-flowtop"><button 
 function beatPage(entry) {
 const n=game.draft.path.length,step=stageView(entry,game.draft.path,game.seed);
 return `<div class="arcade-beat page-enter"><div class="arcade-round"><strong>MOVE ${n} LOCKED IN</strong><span>✓</span></div><div class="arcade-meter">${Array.from({length:4},(_,i)=>`<i class="${i<n?"done":""}"></i>`).join("")}</div>
-<div class="arcade-beat-icon"><div class="arcade-circle"></div><span>⚡</span></div>
+${cinematicScene(entry,"decision",{round:n-1,lineOverride:step.opening || "Your move just changed the game.",speakerOverride:"gwap-o",compact:true}) || `<div class="arcade-beat-icon"><div class="arcade-circle"></div><span>⚡</span></div>`}
 <div class="arcade-new">THE STORY CHANGES</div><h1>THAT HAD<br><em>CONSEQUENCES.</em></h1>
-<div class="arcade-story arcade-outcome"><p>${esc(step.opening||"Your move just changed the game.")}</p></div>
+${entry.id === "streaming-pivot" ? "" : `<div class="arcade-story arcade-outcome"><p>${esc(step.opening||"Your move just changed the game.")}</p></div>`}
 <p class="arcade-tip">Your cash result unlocks after all four decisions.</p><button class="arcade-button" data-action="next-step">ROUND ${n+1} <b>→</b></button><button class="arcade-text-button" data-action="nav" data-view="home">Pause and keep my progress</button></div>`;
 }
 
 function caseResult(entry,run){
 const result=chainResult(entry,run.path,game.seed),win=run.delta>=0,next=playableCases(game)[0];
-return `<div class="arcade-result ${win?"gain":"loss"} page-enter"><div class="arcade-result-label">★ MISSION COMPLETE ★</div><div class="arcade-confetti">${Array.from({length:17},(_,i)=>`<i style="--n:${i}"></i>`).join("")}</div><div class="arcade-medal">${win?"★":"↗"}</div><span>${esc(entry.title.toUpperCase())}</span><h1>${win?"NICE":"TOUGH"}<br><em>${win?"MOVE!":"CALL."}</em></h1>
+return `<div class="arcade-result ${win?"gain":"loss"} page-enter"><div class="arcade-result-label">★ MISSION COMPLETE ★</div>${cinematicScene(entry,"result",{band:result.band})}<div class="arcade-confetti">${Array.from({length:17},(_,i)=>`<i style="--n:${i}"></i>`).join("")}</div><div class="arcade-medal">${win?"★":"↗"}</div><span>${esc(entry.title.toUpperCase())}</span><h1>${win?"NICE":"TOUGH"}<br><em>${win?"MOVE!":"CALL."}</em></h1>
 <div class="arcade-result-delta">${run.delta>=0?"+":"−"}<b class="count-value" data-target="${Math.abs(run.delta)}">${coins(Math.abs(run.delta))}</b><small> G</small></div><p class="arcade-result-desc">SIMULATED COINS ${win?"GAINED":"LOST"}</p>
 <div class="arcade-result-total"><small>NEW BALANCE</small><b>◉ ${coins(run.balanceAfter)} G</b></div>
 <div class="arcade-takeaway"><small>YOUR TAKEAWAY</small><p>${esc(entry.takeaway)}</p></div>
@@ -268,7 +269,7 @@ function render(options = {}) {
       : stage === "beat" && game.draft?.caseId === entry.id ? beatPage(entry)
       : caseBrief(entry);
   }
-  root.innerHTML = `<main class="app-shell"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> PLAYTEST · LOCAL-ONLY COINS · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>${toast ? `<div class="toast" role="alert">${esc(toast)}</div>` : ""}`;
+  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> PLAYTEST · LOCAL-ONLY COINS · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>${toast ? `<div class="toast" role="alert">${esc(toast)}</div>` : ""}`;
   backButton();
   if (countPending) { countPending = false; countUp(); }
 }
@@ -277,6 +278,7 @@ root.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
   if (!button || button.disabled) return;
   const { action } = button.dataset;
+  if (action === "toggle-story-motion") { toggleCinematicMotion(); haptic("light"); render(); return; }
   if (action === "nav") { changeView(button.dataset.view); return; }
   if (action === "open-case") { openCase(button.dataset.case); return; }
   if (action === "decide") {

@@ -36,3 +36,15 @@ Use the same `intro`, `decision-01..04`, `result-<band>` pattern for:
 - Provide reserved image dimensions and preloading to prevent layout shift. Respect reduced motion.
 - Verify approval, export availability, asset licensing, and actual deployment paths before enabling live.
 - Work in isolated preview deployments until founder approves public release.
+
+## Cinematic Sprint 1 export status
+
+The nine approved Streaming Pivot illustrations and four character concept images were ingested from Adobe as compact JPEG files and committed as binary Git blobs. These are **real, checked-in image files**, not temporary Adobe links.
+
+Image paths for `streaming-pivot` use `.jpg`; the remaining quests keep reserved `.webp` paths until their artwork is exported.
+
+The first quest scene paths and all four character portraits are wired into `cinematic-view.mjs`. Future production optimization may create responsive WebP/AVIF variations; retain original artwork in Adobe.
+
+The character concepts are currently raster portraits rather than transparent cutouts. Motion is implemented using CSS camera drift, portrait float and dialogue transitions; optional reduced-motion and a manual toggle are supported.
+
+The gallery of source art remains [in Adobe Firefly](https://firefly.adobe.com/boards/id/urn:aaid:sc:US:32f3155f-9932-4f18-a211-0ea55372e883).
