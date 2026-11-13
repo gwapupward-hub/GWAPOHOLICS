@@ -6,9 +6,9 @@ on:
 permissions:
   contents: read
 jobs:
-  chromium-portrait:
+  mobile-engines:
     runs-on: ubuntu-24.04
-    timeout-minutes: 12
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -18,8 +18,8 @@ jobs:
           node-version: '22'
       - name: Install browser test driver (CI only)
         run: npm install --no-save --no-audit --no-fund playwright@1.56.1
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install Chromium and WebKit
+        run: npx playwright install --with-deps chromium webkit
       - name: Start local game server
         run: |
           npm run dev > /tmp/gwapoholics-dev.log 2>&1 &
@@ -29,5 +29,5 @@ jobs:
           done
           cat /tmp/gwapoholics-dev.log
           exit 1
-      - name: Exercise five missions in mobile-sized browser
+      - name: Exercise full season and mobile browser engines
         run: node --test tests/browser/*.e2e.mjs
