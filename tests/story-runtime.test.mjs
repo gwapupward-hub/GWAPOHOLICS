@@ -42,10 +42,13 @@ import { sceneDirection, reactionFor, hasStoryMode, storyReactionTexts, CHARACTE
 const repo = fileURLToPath(new URL("..", import.meta.url));
 const onDisk = (base) => ["jpg", "webp"].every((ext) => existsSync(repo + base.slice(1) + "." + ext));
 
-test("Story Mode is enabled only for the asset-backed Streaming Pivot pilot", () => {
+test("Story Mode is enabled only for both fully asset-backed cinematic quests", () => {
   assert.equal(hasStoryMode("streaming-pivot"), true);
-  for (const quest of CASES.filter((c) => c.id !== "streaming-pivot")) assert.equal(hasStoryMode(quest.id), false, quest.id);
-  assert.equal(sceneDirection("brand-backlash", "intro"), null);
+  assert.equal(hasStoryMode("brand-backlash"), true);
+  for (const quest of CASES.filter((c) => !["streaming-pivot","brand-backlash"].includes(c.id))) {
+    assert.equal(hasStoryMode(quest.id), false, quest.id);
+  }
+  assert.ok(sceneDirection("brand-backlash", "intro"));
 });
 
 test("all nine Streaming Pivot scenes have direction data and committed JPG + WebP art", () => {
