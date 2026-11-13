@@ -1,4 +1,5 @@
 import { STORY_CHARACTERS, CHARACTER_ART, CHARACTER_STATES, CAMERA_PRESETS, SCENE_EFFECTS } from "./story-runtime.mjs";
+import { storyProps } from "./story-props.mjs";
 
 /**
  * Full-screen Story Mode renderer. Returns markup for one cinematic shot:
@@ -173,6 +174,7 @@ export function storyStage(shot) {
     ${prev}
     <div class="stage-layer stage-bg" aria-hidden="true"><div class="stage-fallback"><span>${esc(d.title)}</span></div><div class="stage-cam">${picture(d.base, { width: 896, height: 1152, eager: true, cls: "stage-art" })}</div></div>
     <div class="stage-layer stage-fx" aria-hidden="true"><i class="fx-glow"></i><i class="fx-tint"></i>${particles(d.particles)}<i class="fx-sweep"></i><i class="fx-flash"></i></div>
+    ${storyProps(d.key)}
     <div class="stage-layer stage-shade" aria-hidden="true"></div>
     <div class="stage-ui">
       ${hud({ progress: shot.progress, balance: shot.balance, motion })}

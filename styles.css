@@ -535,3 +535,34 @@ html.story-mode,html.story-mode body{height:100%;overflow:hidden;overscroll-beha
 .app-hidden .story-stage *,.app-hidden .story-stage *::before,.app-hidden .story-stage *::after{animation-play-state:paused!important}
 .toast-host .toast{bottom:calc(20px + env(safe-area-inset-bottom))}
 html:not(.story-mode) .toast-host .toast{bottom:calc(82px + env(safe-area-inset-bottom))}
+
+
+/* Cinematic Sprint 1B: individually animated decorative prop silhouettes.
+   Real environment art remains the full-viewport backdrop; props never hint
+   at a choice's outcome or intercept touch/keyboard interaction. */
+.stage-props{z-index:2;overflow:hidden;pointer-events:none}
+.stage-prop{position:absolute;left:var(--prop-x);top:var(--prop-y);
+  display:block;width:clamp(36px,var(--prop-size),92px);height:auto;
+  opacity:0;filter:drop-shadow(0 5px 9px rgba(0,0,0,.62));
+  transform:translate3d(-50%,18px,0) rotate(var(--prop-tilt)) scale(.82);
+  will-change:transform,opacity}
+.stage-prop svg{display:block;width:100%;height:auto;overflow:visible}
+.stage-prop-inner{display:block;filter:drop-shadow(0 0 7px rgba(19,221,19,.13))}
+.at-details .stage-prop{
+  animation:stage-prop-enter .62s cubic-bezier(.19,.95,.24,1.1) both;
+  animation-delay:calc(var(--prop-order) * 160ms)}
+.at-details .stage-prop-inner{
+  animation:stage-prop-drift 6.5s ease-in-out infinite alternate;
+  animation-delay:calc(var(--prop-order) * -1.1s)}
+@keyframes stage-prop-enter{
+  0%{opacity:0;transform:translate3d(-50%,18px,0) rotate(var(--prop-tilt)) scale(.82)}
+  100%{opacity:.83;transform:translate3d(-50%,0,0) rotate(var(--prop-tilt)) scale(1)}}
+@keyframes stage-prop-drift{from{transform:translate3d(0,0,0)}to{transform:translate3d(2px,-7px,0)}}
+.at-exit .stage-prop{animation:stage-prop-out .22s ease-in both!important;animation-delay:0ms!important}
+@keyframes stage-prop-out{to{opacity:0;transform:translate3d(-50%,14px,0) scale(.93)}}
+.story-static .stage-prop-inner{animation:none!important}
+.story-static.at-details .stage-prop{animation:none!important;opacity:.76;transform:translate3d(-50%,0,0) rotate(var(--prop-tilt)) scale(1)}
+@media(prefers-reduced-motion:reduce){
+ .story-stage.at-details .stage-prop{animation:none!important;opacity:.76;transform:translate3d(-50%,0,0) rotate(var(--prop-tilt)) scale(1)}
+ .story-stage .stage-prop-inner{animation:none!important}}
+@media(max-height:700px){.stage-prop{max-width:68px}}
