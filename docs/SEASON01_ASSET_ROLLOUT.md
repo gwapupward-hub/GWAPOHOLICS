@@ -1,21 +1,15 @@
-# Season 01 visual rollout — initial asset batch
+# GWAPOHOLICS Season 01 — full cinematic asset coverage
 
-Creative standard: approved Streaming Pivot, full-screen cinematic illustrated business stories, typewriter dialogue, independently revealed foreground props, rich near-black + #13DD13 green + restrained orange/purple.
+The first pass now has all 45 planned scene illustrations across five quests: each intro, four decisions, and four distinct outcome bands.
 
-## Actual assets in this PR
-- Brand Backlash: nine independent JPEG scenes covering intro, four decisions and all four ending bands, plus scene-specific SVG props.
-- Supply Shock, Runway Test, Inflation Trap: opening illustrated studies **only**. Do not turn on cinematic Story Mode for these quests until their other 8 scenes exist.
-- Reuses existing GWAP-O / Advisor / Market Force / Future You concept art; authentic transparent expressions still pending production.
+- Streaming Pivot: 9 approved JPG and WebP visual scenes, existing custom 27 prop cues
+- Brand Backlash: 9 new JPG scenes and 27 business-specific prop cues
+- Supply Shock: 9 new JPG scenes and independent shipping/warehouse prop cues
+- Runway Test: 9 new JPG scenes and independent startup-finance prop cues
+- Inflation Trap: 9 new JPG scenes and independent vintage investment prop cues
 
-All files are durable repo-hosted assets, not temporary Adobe URLs. Brand currently uses JPEG fallback directly; it deliberately does not request nonexistent WebP assets.
+All five quest IDs are wired to a full-screen animated stage; only the first episode's creative direction was previously approved in full. This branch is for preview and review. A successful code test does not mean each new image is editorially or visually approved.
 
-## Why not enable everything at once?
-Art for another quest must include its four decision scenes and all four outcome bands. Rendering one generic background for all choices would betray the approved cinematic standard. Each quest is activated only after every scene has real artwork and the corresponding test passes.
+WebP and AVIF exports remain a visual-performance optimization for new episodes. New scenes intentionally load JPG only (no broken WebP source request). Old Streaming Pivot WebP remains supported. The complete classic game engine, outcomes, recovery and virtual coin rules are unchanged.
 
-## Asset production queue
-1. Brand Backlash — 9/9 scene images generated, integration ready for review.
-2. Supply Shock — 1/9 scene images; 8 outstanding.
-3. Runway Test — 1/9; 8 outstanding.
-4. Inflation Trap — 1/9; 8 outstanding.
-
-A founder mobile preview and approval are still needed for the new Brand Backlash episode. Do not merge into production or claim completed mobile QA.
+Remaining founder acceptance: visual review of four new quest episodes, actual Telegram iPhone and Android tests, narrator transparent cutouts, accessibility and secure server-backed player progress. No production or bot rollout permitted from this draft branch.

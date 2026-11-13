@@ -9,7 +9,7 @@ test("narrative configuration maps exactly to the existing five cases", () => {
 
 test("every case has intro, four decisions and four result scene definitions", () => {
   for (const quest of CASES) {
-    const extension = ["streaming-pivot","brand-backlash"].includes(quest.id) ? "jpg" : "webp";
+    const extension = "jpg";
     const intro = narrativeScene(quest.id, "intro");
     assert.ok(intro?.image?.endsWith("/intro." + extension));
     assert.ok(STORY_CHARACTERS[intro.speaker]);
@@ -42,13 +42,11 @@ import { sceneDirection, reactionFor, hasStoryMode, storyReactionTexts, CHARACTE
 const repo = fileURLToPath(new URL("..", import.meta.url));
 const onDisk = (base) => ["jpg", "webp"].every((ext) => existsSync(repo + base.slice(1) + "." + ext));
 
-test("Story Mode is enabled only for both fully asset-backed cinematic quests", () => {
-  assert.equal(hasStoryMode("streaming-pivot"), true);
-  assert.equal(hasStoryMode("brand-backlash"), true);
-  for (const quest of CASES.filter((c) => !["streaming-pivot","brand-backlash"].includes(c.id))) {
-    assert.equal(hasStoryMode(quest.id), false, quest.id);
+test("Story Mode is enabled for all five fully illustrated Season 1 quests", () => {
+  for (const quest of CASES) {
+    assert.equal(hasStoryMode(quest.id), true, quest.id);
+    assert.ok(sceneDirection(quest.id, "intro"));
   }
-  assert.ok(sceneDirection("brand-backlash", "intro"));
 });
 
 test("all nine Streaming Pivot scenes have direction data and committed JPG + WebP art", () => {

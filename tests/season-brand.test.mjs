@@ -5,11 +5,11 @@ import { hasStoryMode, sceneDirection, narrativeScene, storyAssetExt } from '../
 import { storyStage } from '../cinematic-view.mjs';
 import { brandProps, BRAND_PROP_KEYS } from '../brand-props.mjs';
 
-test('brand backlog is a second real Story Mode quest; the other three are not enabled prematurely',()=>{
+test('Brand Backlash is a complete episode within full Season 1',()=>{
  assert.equal(hasStoryMode('streaming-pivot'),true);
  assert.equal(hasStoryMode('brand-backlash'),true);
  assert.equal(CASES.find(x=>x.id==='brand-backlash').stages.length,4);
- for(const id of ['supply-shock','founder-runway','inflation-trap'])assert.equal(hasStoryMode(id),false);
+ for(const id of ['supply-shock','founder-runway','inflation-trap'])assert.equal(hasStoryMode(id),true);
 });
 test('all nine Brand Backlash scene assets and prop sets are declared',()=>{
  assert.equal(BRAND_PROP_KEYS.length,9);
