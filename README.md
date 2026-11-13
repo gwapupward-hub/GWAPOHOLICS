@@ -40,7 +40,7 @@ This imported prototype saves progress to **localStorage** on the user's device.
 ## Production roadmap
 
 1. ✅ Import playable source and baseline automated checks.
-2. Integrate the **Streaming Pivot** cinematic experience in an isolated feature branch and preview.
+2. Integrate the **Streaming Pivot** cinematic experience in an isolated feature branch and preview. *(Sprint 1A: full-screen Story Mode — see [notes](docs/CINEMATIC_SPRINT_1A.md).)*
 3. Expand the same scene engine to the other four quests.
 4. Build server-side authenticated persistent player progress.
 5. Run iPhone/Android Telegram QA, optimize assets, private beta.

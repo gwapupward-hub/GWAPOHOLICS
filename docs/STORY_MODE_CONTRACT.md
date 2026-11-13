@@ -1,6 +1,6 @@
 # Story Mode V1 — implementation contract
 
-Branch: `feat/cinematic-story-mode-v1`. This phase introduces the **content contract only**. Artwork is not bundled yet and no existing UI loads the filenames until exported assets are available.
+Originally introduced on `feat/cinematic-story-mode-v1` as a content contract. Sprint 1A renders it full-screen for The Streaming Pivot.
 
 ## Runtime
 
@@ -11,13 +11,17 @@ Branch: `feat/cinematic-story-mode-v1`. This phase introduces the **content cont
 - Image paths are *reserved* and must be supplied as optimized local/CDN assets before rendering.
 - A scene is a visual accompaniment, **not an instruction or a scoring input**.
 
-## Composition
+## Composition (Sprint 1A, full-screen)
 
-1. Upper two-thirds: scene artwork, zoom/parallax only within modest mobile performance budget.
-2. Midframe: one character portrait/expression layer plus short dialogue bubble.
-3. Lower third: accessible HTML copy and three unambiguous choice buttons.
-4. On selection: haptic response if available, immediate one-tap commit, then a brief consequence beat.
-5. Result: mapped illustration for the actual immutable settlement band, coin count, full takeaway, next quest.
+1. Scene art fills the Telegram viewport edge to edge behind everything (`object-fit: cover`, per-scene focal point, slow camera preset).
+2. Lighting/particle overlay and an adaptive dark gradient keep HUD, dialogue and decisions readable.
+3. Minimal HUD: pause/exit, mission progress, balance, motion toggle.
+4. One speaking character in the foreground with a typing speech bubble.
+5. Bottom panel: prompt and three unambiguous choices, revealed after narration (skippable).
+6. On selection: one-tap commit with feedback, then a consequence beat with a character reaction.
+7. Result: band art, Future You lesson, settled coin count-up, next quest.
+
+See `docs/CINEMATIC_SPRINT_1A.md` for the scene controller and accessibility details.
 
 ## QA
 

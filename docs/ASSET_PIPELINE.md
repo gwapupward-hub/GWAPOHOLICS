@@ -43,8 +43,8 @@ The nine approved Streaming Pivot illustrations and four character concept image
 
 Image paths for `streaming-pivot` use `.jpg`; the remaining quests keep reserved `.webp` paths until their artwork is exported.
 
-The first quest scene paths and all four character portraits are wired into `cinematic-view.mjs`. Future production optimization may create responsive WebP/AVIF variations; retain original artwork in Adobe.
+Sprint 1A adds a WebP variant (quality 78) next to every JPG; Story Mode serves WebP through `<picture>` and keeps the JPG fallback. Retain original artwork in Adobe.
 
-The character concepts are currently raster portraits rather than transparent cutouts. Motion is implemented using CSS camera drift, portrait float and dialogue transitions; optional reduced-motion and a manual toggle are supported.
+The character concepts are currently raster portraits rather than transparent cutouts; Story Mode shows them with a soft radial mask. Set `cutout` in `CHARACTER_ART` (story-runtime.mjs) when transparent exports exist.
 
 The gallery of source art remains [in Adobe Firefly](https://firefly.adobe.com/boards/id/urn:aaid:sc:US:32f3155f-9932-4f18-a211-0ea55372e883).
