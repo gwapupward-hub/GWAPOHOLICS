@@ -21,7 +21,7 @@ test("every case has intro, four decisions and four result scene definitions", (
     }
     for (const band of STORY_RESULT_BANDS) {
       const outcome = narrativeScene(quest.id, "result", { band });
-      assert.ok(outcome?.image?.endsWith("/result-" + band + ".webp"));
+      assert.ok(outcome?.image?.endsWith("/result-" + band + "." + extension));
       assert.equal(outcome.speaker, "future-you");
       assert.ok(outcome.line.length <= 165);
     }
