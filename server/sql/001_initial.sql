@@ -1,14 +1,17 @@
--- REVIEW REQUIRED: PostgreSQL migration draft, NOT applied.
--- This is only a virtual educational coin ledger.
+-- GWAPOHOLICS v1 development schema. REVIEW REQUIRED; NOT APPLIED.
+-- Virtual educational coins only. Never use for real-money/token accounting.
 BEGIN;
 CREATE TABLE IF NOT EXISTS players (
- telegram_user_id BIGINT PRIMARY KEY,
- balance BIGINT NOT NULL DEFAULT 1000 CHECK (balance>=0),
- seed BIGINT NOT NULL,
- last_recovery_at TIMESTAMPTZ,
+ telegram_user_id BIGINT PRIMARY KEY CHECK (telegram_user_id > 0),
+ -- Whole deterministic game snapshot is server-owned; never accept client JSON.
+ game_state JSONB NOT NULL CHECK (jsonb_typeof(game_state)='object'),
+ balance BIGINT NOT NULL CHECK (balance>=0),
+ seed BIGINT NOT NULL CHECK (seed BETWEEN 0 AND 4294967295),
  version BIGINT NOT NULL DEFAULT 0,
  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
- updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+ updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ CHECK ((game_state->>'balance')::bigint=balance),
+ CHECK ((game_state->>'seed')::bigint=seed)
 );
 CREATE TABLE IF NOT EXISTS quest_runs (
  telegram_user_id BIGINT NOT NULL REFERENCES players(telegram_user_id),
@@ -17,6 +20,15 @@ CREATE TABLE IF NOT EXISTS quest_runs (
  choices JSONB NOT NULL DEFAULT '[]'::jsonb
    CHECK (jsonb_typeof(choices)='array' AND jsonb_array_length(choices)<=4),
  PRIMARY KEY (telegram_user_id,case_id)
+);
+-- Every command (including start/choices with no balance change) has a
+-- durable response for safe retry after a network timeout.
+CREATE TABLE IF NOT EXISTS command_receipts (
+ telegram_user_id BIGINT NOT NULL REFERENCES players(telegram_user_id),
+ idempotency_key TEXT NOT NULL CHECK (length(idempotency_key) BETWEEN 1 AND 96),
+ response JSONB NOT NULL CHECK (jsonb_typeof(response)='object'),
+ created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+ PRIMARY KEY (telegram_user_id,idempotency_key)
 );
 CREATE TABLE IF NOT EXISTS virtual_ledger (
  id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
