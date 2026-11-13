@@ -1,4 +1,5 @@
 import { BOT_USERNAME } from "./config.mjs";
+import { startTelegramSession, refreshPlayer, sendGameCommand } from "./server-client.mjs";
 import { homeNarrator, cinematicMotionClass, toggleCinematicMotion, storyMotionEnabled, storyStage, introPanel, decisionPanel, consequencePanel, resultPanel, resultScore } from "./cinematic-view.mjs";
 import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARACTERS, CHARACTER_ART, storyAssetExt } from "./story-runtime.mjs";
 import { createSceneDirector, SCENE_STEPS, EXIT_STEPS } from "./story-director.mjs";
@@ -15,7 +16,11 @@ const root = document.querySelector("#app");
 const tg = window.Telegram?.WebApp;
 const isTelegram = Boolean(tg?.initData);
 const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname) || location.protocol === "file:";
-const canPlay = isTelegram || localPreview || new URLSearchParams(location.search).get("demo") === "1";
+const explicitDemo = new URLSearchParams(location.search).get("demo") === "1";
+const canPlay = isTelegram || localPreview || explicitDemo;
+const remoteRequested = isTelegram && !explicitDemo;
+let remoteStatus = remoteRequested ? "connecting" : "demo";
+let pendingCommand = null;
 
 const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const coins = (value) => new Intl.NumberFormat("en-US").format(value);
@@ -39,6 +44,7 @@ let resetArmed = false;
 let moveBusy = false;
 
 function persist() {
+  if (game.remote) return;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(game)); }
   catch { showToast("Device storage is unavailable; your progress may not persist."); }
 }
@@ -91,6 +97,49 @@ function showToast(message) {
   toast = message;
   renderToast();
   window.setTimeout(() => { if (toast === message) { toast = null; renderToast(); } }, 3800);
+}
+
+
+function visibleStage(entry){
+  if(game.remote){
+    const step=game.draft?.step;
+    if(!step||game.draft.caseId!==entry.id)throw new Error('Secure step unavailable');
+    return step;
+  }
+  return stageView(entry,game.draft.path,game.seed);
+}
+function visibleResult(entry,run){
+  if(game.remote){
+    if(!run?.result)throw new Error('Secure result unavailable');
+    return run.result;
+  }
+  return chainResult(entry,run.path,game.seed);
+}
+function visibleEvidence(entry){
+  return game.remote ? (game.evidence?.[entry.id] || []) : evidenceFor(entry,game.seed);
+}
+async function remoteCommand(command,extra={}){
+  const signature=JSON.stringify({command,...extra});
+  const requestId=pendingCommand?.signature===signature ? pendingCommand.requestId : crypto.randomUUID();
+  pendingCommand={signature,requestId};
+  const next=await sendGameCommand({command,...extra,requestId});
+  pendingCommand=null;
+  return next;
+}
+async function resyncRemote(){
+  if(!game.remote)return;
+  try{game=await refreshPlayer();leaveStory();render()}
+  catch{showToast('Connection interrupted. Confirmed progress is saved on the server.')}
+}
+async function authenticatePlayer(){
+  remoteStatus='connecting';render();
+  try{
+    game=await startTelegramSession(tg?.initData);
+    remoteStatus='ready';view='home';caseId=null;stage='brief';
+  }catch{
+    remoteStatus='failed';
+  }
+  render();
 }
 
 function changeView(next) {
@@ -470,6 +519,14 @@ function chooseInStory(button) {
 }
 
 function render(options = {}) {
+  if(remoteRequested && remoteStatus!=='ready'){
+    leaveStory();
+    const msg=remoteStatus==='connecting'
+      ? 'Verifying your Telegram account and retrieving your progress.'
+      : 'Secure sign-in is unavailable. Your virtual coins have not changed.';
+    root.innerHTML='<main class="app-shell"><div class="app-inner"><section class="arcade-flow page-enter" style="padding:28px 18px"><h1 class="arcade-title">GWAPOHOLICS.</h1><p class="arcade-hook">'+msg+'</p><button class="arcade-button" data-action="auth-retry">RETRY SECURE SIGN-IN →</button><p class="arcade-fine">For local playtesting only use ?demo=1. Demo coins do not become live account coins.</p></section></div></main>';
+    return;
+  }
   if (!canPlay) { leaveStory(); root.innerHTML = `<main class="app-shell"><div class="app-inner">${gatePage()}</div></main>`; return; }
   if (storyEligible()) { renderStory(); return; }
   leaveStory();
@@ -493,10 +550,11 @@ function render(options = {}) {
   if (countPending) { countPending = false; countUp(); }
 }
 
-root.addEventListener("click", (event) => {
+root.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button || button.disabled) return;
   const { action } = button.dataset;
+  if (action === "auth-retry") { if(remoteRequested)authenticatePlayer(); return; }
   if (action === "story-hurry") { hurryStory(); return; }
   if (action === "story-skip") { skipStory(); return; }
   if (action === "story-exit") { changeView("home"); return; }
@@ -614,4 +672,5 @@ root.addEventListener("error", (event) => {
 }, true);
 
 setupTelegram();
-render();
+if(remoteRequested)authenticatePlayer();
+else render();
