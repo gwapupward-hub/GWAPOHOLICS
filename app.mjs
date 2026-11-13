@@ -1,4 +1,8 @@
 import { BOT_USERNAME } from "./config.mjs";
+import { homeNarrator, cinematicMotionClass, toggleCinematicMotion, storyMotionEnabled, storyStage, introPanel, decisionPanel, consequencePanel, resultPanel, resultScore } from "./cinematic-view.mjs";
+import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARACTERS, CHARACTER_ART } from "./story-runtime.mjs";
+import { createSceneDirector, SCENE_STEPS, EXIT_STEPS } from "./story-director.mjs";
+import { bindTypewriter, DEFAULT_TYPE_SPEED } from "./typewriter.mjs";
 import { CASES, DIMENSIONS, RECOVERY_QUESTIONS } from "./cases.mjs";
 import {
   STORAGE_KEY, MIN_PLAY_BALANCE, STARTING_COINS, RECOVERY_REWARD,
@@ -50,6 +54,13 @@ function setupTelegram() {
     tg.expand();
     tg.setHeaderColor?.("#0a0d0a");
     tg.setBackgroundColor?.("#0a0d0a");
+    // Story Mode sizes itself to Telegram's stable viewport, so the stage never jumps while the sheet expands.
+    const syncViewport = () => {
+      const h = tg.viewportStableHeight || tg.viewportHeight;
+      if (h) document.documentElement.style.setProperty("--app-height", `${h}px`);
+    };
+    syncViewport();
+    tg.onEvent?.("viewportChanged", syncViewport);
     tg.BackButton?.onClick(() => {
       if (view === "scenario" && stage === "decide" && !game.draft?.path.length) { stage = "brief"; selectedChoice = null; render(); return; }
       changeView("home");
@@ -62,10 +73,24 @@ function backButton() {
   catch { /* browser preview */ }
 }
 
+// Toasts live outside #app so showing one never re-renders (or restarts) a cinematic shot.
+const toastHost = document.createElement("div");
+toastHost.className = "toast-host";
+document.body.append(toastHost);
+// One polite live region announces each shot's full dialogue once, instead of every typed character.
+const announcer = document.createElement("div");
+announcer.className = "sr-only";
+announcer.setAttribute("aria-live", "polite");
+document.body.append(announcer);
+
+function renderToast() {
+  toastHost.innerHTML = toast ? `<div class="toast" role="alert">${esc(toast)}</div>` : "";
+}
+
 function showToast(message) {
   toast = message;
-  render({ quiet: true });
-  window.setTimeout(() => { if (toast === message) { toast = null; render({ quiet: true }); } }, 3800);
+  renderToast();
+  window.setTimeout(() => { if (toast === message) { toast = null; renderToast(); } }, 3800);
 }
 
 function changeView(next) {
@@ -121,7 +146,7 @@ return `<div class="arcade-home page-enter">
 <section class="arcade-hero"><div class="arcade-orbit">G</div><div class="arcade-star star-a">✦</div><div class="arcade-star star-b">✦</div>
 <div class="arcade-hero-inside"><span>THE WORLD IS YOUR BOARDROOM</span><h1>MAKE<br>THE <em>CALL.</em></h1><p>Big decisions. Bigger consequences.<br>Think fast. Build smart.</p>
 ${isLocked(game)?`<button class="arcade-button is-orange" data-action="nav" data-view="recovery">START YOUR COMEBACK <b>→</b></button>`:next?`<button class="arcade-button" data-action="open-case" data-case="${next.id}">${game.draft?.path.length?"CONTINUE MISSION":"PLAY NOW"} <b>→</b></button>`:`<button class="arcade-button" data-action="nav" data-view="profile">YOUR LEGACY <b>→</b></button>`}</div></section>
-<div class="arcade-stats"><div><span>YOUR CAPITAL</span><strong>◉ ${coins(game.balance)}<small> G</small></strong></div><div><span>MISSIONS</span><strong>${done}<small> / 5</small></strong></div></div>
+${homeNarrator()}<div class="arcade-stats"><div><span>YOUR CAPITAL</span><strong>◉ ${coins(game.balance)}<small> G</small></strong></div><div><span>MISSIONS</span><strong>${done}<small> / 5</small></strong></div></div>
 <div class="arcade-how"><div>⚡</div><span><b>HOW TO PLAY</b><small>Read the problem → make a call → watch what happens. Four moves finish a mission.</small></span></div>
 <div class="arcade-section-title"><strong>UP NEXT</strong><small>${prog}% COMPLETE</small></div>
 ${next?`<button class="arcade-next" data-action="open-case" data-case="${next.id}"><b>${next.number}</b><span><small>${esc(next.category.toUpperCase())} · ${next.minutes} MIN</small><strong>${esc(next.title)}</strong><i>${esc(next.hook)}</i></span><em>↗</em></button>`:`<div class="arcade-next"><strong>Season 01 complete. Your choices shaped your legacy.</strong></div>`}
@@ -228,22 +253,15 @@ function gatePage() {
 // Set when a chain settles, so the result amount counts up once after the screen appears.
 let countPending = false;
 
-const signed = (value) => `${value >= 0 ? "+" : "−"}${coins(Math.abs(value))}`;
-
-function stageSegments(total, current) {
-  const segments = Array.from({ length: total }, (_, index) => `<span class="${index < current ? "done" : index === current ? "current" : ""}"></span>`);
-  return `<div class="stage-segments" aria-hidden="true">${segments.join("")}</div>`;
-}
-
-// Counts the settled amount up once. Reduced-motion users keep the static number from the markup.
-function countUp() {
-  const el = root.querySelector(".count-value");
+// Counts a settled amount up once. With motion off the static number from the markup stays.
+function countUp(el = root.querySelector(".count-value"), animate = !window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) {
   const target = Number(el?.dataset.target);
-  if (!el || !target || window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return;
+  if (!el || !target || !animate) return;
   const start = performance.now();
-  const duration = 900;
+  const duration = 1100;
   el.textContent = "0";
   const step = (now) => {
+    if (!el.isConnected) return;
     const t = Math.min(1, (now - start) / duration);
     el.textContent = coins(Math.round(target * (1 - Math.pow(1 - t, 3))));
     if (t < 1) requestAnimationFrame(step);
@@ -251,8 +269,210 @@ function countUp() {
   requestAnimationFrame(step);
 }
 
+/* ------------------------------------------------------------------------- *
+ * Story Mode (Cinematic Sprint 1A). Only quests with exported art use it;
+ * the other four quests keep the classic layout until the founder approves.
+ * Every coin and decision still flows through game-core.mjs unchanged.
+ * ------------------------------------------------------------------------- */
+
+const story = {
+  active: false,
+  el: null,
+  typer: null,
+  previous: null,        // last background, so the next shot can crossfade from it
+  countOnEnter: false,
+  keyboard: false,
+  preloaded: new Map()
+};
+
+const director = createSceneDirector({ onStep: applyStoryStep });
+
+function storyEligible() {
+  return view === "scenario" && hasStoryMode(caseId) && Boolean(getCase());
+}
+
+function preloadImage(base) {
+  // Warms the WebP that the <picture> elements choose (every supported Telegram WebView decodes WebP).
+  if (!base || story.preloaded.has(base)) return;
+  const img = new Image();
+  img.decoding = "async";
+  img.src = base + ".webp";
+  story.preloaded.set(base, img);
+}
+
+function preloadShot(caseIdToLoad, phase, opts) {
+  const direction = sceneDirection(caseIdToLoad, phase, opts);
+  if (direction) preloadImage(direction.base);
+  const speaker = phase === "result" ? "future-you" : narrativeScene(caseIdToLoad, phase, opts)?.speaker;
+  if (speaker && CHARACTER_ART[speaker]) preloadImage(CHARACTER_ART[speaker].image);
+}
+
+function storyShot(entry) {
+  const total = entry.stages.length;
+  const run = game.played.find((item) => item.caseId === entry.id);
+  const draftOpen = game.draft?.caseId === entry.id;
+  const ribbon = (direction) => `MISSION ${entry.number} · ${direction.title.toUpperCase()}`;
+  const base = { balance: game.balance };
+
+  if (stage === "result" && run) {
+    const result = chainResult(entry, run.path, game.seed);
+    const direction = sceneDirection(entry.id, "result", { band: result.band });
+    const scene = narrativeScene(entry.id, "result", { band: result.band });
+    return { ...base, key: `${entry.id}:result`, phase: "result", direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
+      lines: [scene.line, `Lesson: ${entry.takeaway}`], overlay: resultScore(run.delta),
+      panel: resultPanel({ run, result, next: playableCases(game)[0], locked: isLocked(game) }),
+      label: `${entry.title}: result`, ribbon: ribbon(direction), progress: { label: "MISSION COMPLETE", total, done: total, current: -1 } };
+  }
+  if (stage === "beat" && draftOpen && game.draft.path.length) {
+    const made = game.draft.path.length;
+    const step = stageView(entry, game.draft.path, game.seed);
+    const direction = sceneDirection(entry.id, "consequence", { round: made - 1 });
+    const emotion = reactionFor(entry.id, step.opening);
+    const effect = emotion === "worried" ? "impact" : emotion === "celebrating" ? "glow" : emotion === "talking" ? "none" : "dim";
+    return { ...base, key: `${entry.id}:beat:${made}`, phase: "consequence", direction, speaker: "gwap-o", emotion, effect,
+      lines: [step.opening || "Your move just changed the game."], panel: consequencePanel(made, total),
+      label: `${entry.title}: consequence of move ${made}`, ribbon: `MISSION ${entry.number} · THE FALLOUT`, progress: { label: `MOVE ${made} LOCKED`, total, done: made, current: -1 } };
+  }
+  if (stage === "decide" && draftOpen) {
+    const step = stageView(entry, game.draft.path, game.seed);
+    const direction = sceneDirection(entry.id, "decision", { round: step.index });
+    const scene = narrativeScene(entry.id, "decision", { round: step.index });
+    return { ...base, key: `${entry.id}:decide:${step.index}`, phase: "decision", direction, speaker: scene.speaker, emotion: direction.emotion, effect: "none",
+      lines: [scene.line, step.setup], panel: decisionPanel(step),
+      label: `${entry.title}: round ${step.index + 1} of ${total}`, ribbon: ribbon(direction), progress: { label: `ROUND ${step.index + 1} OF ${total}`, total, done: step.index, current: step.index } };
+  }
+  const direction = sceneDirection(entry.id, "intro");
+  const scene = narrativeScene(entry.id, "intro");
+  return { ...base, key: `${entry.id}:intro`, phase: "intro", direction, speaker: scene.speaker, emotion: direction.emotion, effect: "none",
+    lines: [scene.line, entry.story], panel: introPanel(entry, evidenceFor(entry, game.seed)),
+    label: `${entry.title}: mission brief`, ribbon: ribbon(direction), progress: { label: `MISSION ${entry.number} · BRIEFING`, total, done: 0, current: -1 } };
+}
+
+function preloadAfter(shot, entry) {
+  if (shot.phase === "intro") preloadShot(entry.id, "decision", { round: 0 });
+  else if (shot.phase === "decision" || shot.phase === "consequence") {
+    const nextRound = game.draft ? game.draft.path.length + (shot.phase === "decision" ? 1 : 0) : 4;
+    if (nextRound < entry.stages.length) preloadShot(entry.id, "decision", { round: nextRound });
+  }
+}
+
+function setStoryChrome(on) {
+  if (story.active === on) return;
+  story.active = on;
+  document.documentElement.classList.toggle("story-mode", on);
+  try { on ? tg?.disableVerticalSwipes?.() : tg?.enableVerticalSwipes?.(); } catch { /* older clients */ }
+}
+
+function leaveStory() {
+  director.dispose();
+  story.typer?.dispose();
+  story.typer = null;
+  story.el = null;
+  story.previous = null;
+  setStoryChrome(false);
+}
+
+function renderStory() {
+  const entry = getCase();
+  const shot = storyShot(entry);
+  shot.previous = story.previous;
+  director.dispose();
+  story.typer?.dispose();
+  setStoryChrome(true);
+  root.innerHTML = `<main class="story-shell">${storyStage(shot)}</main>`;
+  story.el = root.querySelector(".story-stage");
+  story.previous = shot.direction.base;
+  const art = story.el.querySelector(".stage-art");
+  if (art?.complete && art.naturalWidth) story.el.classList.add("art-ready");
+  const motion = storyMotionEnabled();
+  const speed = Number(new URLSearchParams(location.search).get("typespeed")) || DEFAULT_TYPE_SPEED;
+  const bubbleText = story.el.querySelector(".bubble-text");
+  story.typer = bindTypewriter(story.el.querySelector(".stage-bubble"), {
+    speed,
+    instant: !motion,
+    // On short screens the bubble scrolls; keep the line being typed in view.
+    onFrame: () => { if (bubbleText.scrollHeight > bubbleText.clientHeight) bubbleText.scrollTop = bubbleText.scrollHeight; },
+    onDone: () => director.typingDone()
+  });
+  story.countOnEnter = shot.phase === "result" && countPending;
+  countPending = false;
+  const name = STORY_CHARACTERS[shot.speaker]?.name || "Narrator";
+  announcer.textContent = `${shot.progress.label}. ${name}: ${shot.lines.filter(Boolean).join(" ")}`;
+  director.play({ reducedMotion: !motion });
+  preloadAfter(shot, entry);
+  backButton();
+}
+
+function applyStoryStep(step) {
+  const el = story.el;
+  if (!el || !el.isConnected) return;
+  el.dataset.step = step;
+  // Cumulative classes (at-details, at-enter, ...) let CSS stage each reveal once and keep it.
+  const order = [...SCENE_STEPS, ...EXIT_STEPS];
+  const reached = order.indexOf(step);
+  order.forEach((name, i) => el.classList.toggle(`at-${name}`, i <= reached));
+  if (step === "enter" && story.countOnEnter) { story.countOnEnter = false; countUp(el.querySelector(".count-value"), true); }
+  if (step === "typing") story.typer?.start();
+  if (step === "choices") {
+    if (story.countOnEnter) story.countOnEnter = false; // motion off: keep the static settled number
+    story.typer?.complete();
+    const panel = el.querySelector(".stage-panel");
+    panel?.removeAttribute("inert");
+    // Keyboard users land on the decision; touch and pointer users keep their place.
+    if (story.keyboard && (!document.activeElement || document.activeElement === document.body)) panel?.querySelector("[tabindex='-1']")?.focus({ preventScroll: true });
+  }
+  if (step === "locked") el.querySelector(".stage-panel")?.setAttribute("aria-busy", "true");
+}
+
+function hurryStory() {
+  if (!story.active) return;
+  if (director.step === "typing") story.typer?.complete();
+  else director.hurry();
+}
+
+function skipStory() {
+  if (!story.active) return;
+  director.skip();
+  story.typer?.complete();
+}
+
+// Applies a decision through the existing game core, unchanged from the classic flow.
+function commitChoice(id) {
+  try {
+    const current = getCase();
+    game = chooseStep(game, caseId, id);
+    if (game.draft.path.length === current.stages.length) {
+      game = completeChain(game, caseId);
+      stage = "result";
+      countPending = true;
+      try { tg?.HapticFeedback?.notificationOccurred(game.played.at(-1).delta >= 0 ? "success" : "warning"); } catch {}
+    } else stage = "beat";
+    persist(); render(); if (!story.active) window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (error) { showToast(error.message); }
+  finally { moveBusy = false; }
+}
+
+function chooseInStory(button) {
+  if (moveBusy || !caseId || !game.draft) return;
+  const id = button.dataset.choice;
+  const entry = getCase();
+  // The director accepts exactly one selection, and only once decisions are visible.
+  if (!director.select(() => commitChoice(id))) return;
+  moveBusy = true;
+  button.classList.add("is-chosen");
+  button.setAttribute("aria-pressed", "true");
+  story.el?.classList.add("has-choice");
+  haptic("medium");
+  // The last move settles the chain: warm up only the one result scene the player will see.
+  if (game.draft.path.length === entry.stages.length - 1) {
+    try { preloadShot(entry.id, "result", { band: chainResult(entry, [...game.draft.path, id], game.seed).band }); } catch { /* preload is optional */ }
+  }
+}
+
 function render(options = {}) {
-  if (!canPlay) { root.innerHTML = `<main class="app-shell"><div class="app-inner">${gatePage()}</div></main>`; return; }
+  if (!canPlay) { leaveStory(); root.innerHTML = `<main class="app-shell"><div class="app-inner">${gatePage()}</div></main>`; return; }
+  if (storyEligible()) { renderStory(); return; }
+  leaveStory();
   let content;
   if (view === "home") content = welcome();
   else if (view === "cases") content = caseList();
@@ -268,7 +488,7 @@ function render(options = {}) {
       : stage === "beat" && game.draft?.caseId === entry.id ? beatPage(entry)
       : caseBrief(entry);
   }
-  root.innerHTML = `<main class="app-shell"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> PLAYTEST · LOCAL-ONLY COINS · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>${toast ? `<div class="toast" role="alert">${esc(toast)}</div>` : ""}`;
+  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> PLAYTEST · LOCAL-ONLY COINS · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
   backButton();
   if (countPending) { countPending = false; countUp(); }
 }
@@ -277,6 +497,22 @@ root.addEventListener("click", (event) => {
   const button = event.target.closest("[data-action]");
   if (!button || button.disabled) return;
   const { action } = button.dataset;
+  if (action === "story-hurry") { hurryStory(); return; }
+  if (action === "story-skip") { skipStory(); return; }
+  if (action === "story-exit") { changeView("home"); return; }
+  if (action === "toggle-story-motion") {
+    const on = toggleCinematicMotion();
+    haptic("light");
+    if (story.active && story.el) {
+      // Apply in place so the current shot is not restarted.
+      story.el.classList.toggle("story-static", !on);
+      button.setAttribute("aria-pressed", String(!on));
+      button.setAttribute("aria-label", on ? "Turn story animation off" : "Turn story animation on");
+      button.firstElementChild.textContent = on ? "✦" : "✧";
+      if (!on) skipStory();
+    } else render();
+    return;
+  }
   if (action === "nav") { changeView(button.dataset.view); return; }
   if (action === "open-case") { openCase(button.dataset.case); return; }
   if (action === "decide") {
@@ -286,28 +522,16 @@ root.addEventListener("click", (event) => {
   }
   if (action === "back-stage") { stage = "brief"; selectedChoice = null; render(); return; }
   if (action === "choose") {
+    if (story.active) { chooseInStory(button); return; }
     if (moveBusy || !caseId || !game.draft) return;
     moveBusy = true;
     const id = button.dataset.choice;
     button.classList.add("locked-choice");
     haptic("medium");
-    window.setTimeout(() => {
-      try {
-        const current = getCase();
-        game = chooseStep(game, caseId, id);
-        if (game.draft.path.length === current.stages.length) {
-          game = completeChain(game, caseId);
-          stage = "result";
-          countPending = true;
-          try { tg?.HapticFeedback?.notificationOccurred(game.played.at(-1).delta >= 0 ? "success" : "warning"); } catch {}
-        } else stage = "beat";
-        persist(); render(); window.scrollTo({ top: 0, behavior: "smooth" });
-      } catch (error) { showToast(error.message); }
-      finally { moveBusy = false; }
-    }, 250);
+    window.setTimeout(() => commitChoice(id), 250);
     return;
   }
-  if (action === "next-step") { stage = "decide"; haptic("light"); render(); window.scrollTo({top:0,behavior:"smooth"}); return; }
+  if (action === "next-step") { stage = "decide"; haptic("light"); render(); if (!story.active) window.scrollTo({top:0,behavior:"smooth"}); return; }
   if (action === "confirm") {
     if (!selectedChoice || !caseId) return;
     try {
@@ -349,6 +573,45 @@ root.addEventListener("submit", (event) => {
     changeView(isLocked(game) ? "recovery" : "home");
   } catch (error) { showToast(error.message); }
 });
+
+// Hidden app: finish the current shot instantly and pause ambient loops; nothing runs in the background.
+document.addEventListener("visibilitychange", () => {
+  const hidden = document.visibilityState === "hidden";
+  document.documentElement.classList.toggle("app-hidden", hidden);
+  if (hidden) skipStory();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Tab") story.keyboard = true;
+  if (!story.active) return;
+  const onControl = event.target.closest?.("button, a, input, summary, details, [tabindex]");
+  if ((event.key === " " || event.key === "Enter") && !onControl) { event.preventDefault(); hurryStory(); }
+  if (event.key === "Escape") skipStory();
+});
+document.addEventListener("pointerdown", () => { story.keyboard = false; }, { passive: true });
+
+// Pointer parallax (fine pointers only): background, light and cast layers drift by different amounts.
+let parallaxFrame = 0;
+document.addEventListener("pointermove", (event) => {
+  if (!story.active || !story.el || event.pointerType !== "mouse" || !storyMotionEnabled() || parallaxFrame) return;
+  parallaxFrame = requestAnimationFrame(() => {
+    parallaxFrame = 0;
+    if (!story.el) return;
+    story.el.style.setProperty("--px", ((event.clientX / innerWidth) * 2 - 1).toFixed(3));
+    story.el.style.setProperty("--py", ((event.clientY / innerHeight) * 2 - 1).toFixed(3));
+  });
+}, { passive: true });
+
+// Images fade in when decoded; a failed scene keeps its readable gradient fallback.
+root.addEventListener("load", (event) => {
+  if (event.target.classList?.contains("stage-art")) event.target.closest(".story-stage")?.classList.add("art-ready");
+}, true);
+root.addEventListener("error", (event) => {
+  const img = event.target;
+  if (img.tagName !== "IMG") return;
+  if (img.classList.contains("stage-art")) img.closest(".story-stage")?.classList.add("art-missing");
+  else img.closest(".stage-character")?.classList.add("is-missing");
+}, true);
 
 setupTelegram();
 render();

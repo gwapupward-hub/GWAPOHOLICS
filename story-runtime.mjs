@@ -94,7 +94,7 @@ const data = {
 export const STORYLINES = Object.freeze(data);
 
 function artPath(caseId, suffix) {
-  return `/assets/scenes/${caseId}/${suffix}.webp`;
+  return `/assets/scenes/${caseId}/${suffix}.${caseId === "streaming-pivot" ? "jpg" : "webp"}`;
 }
 
 export function narrativeScene(caseId, phase, { round, band } = {}) {
@@ -114,4 +114,94 @@ export function narrativeScene(caseId, phase, { round, band } = {}) {
     return { caseId, phase, band, speaker: "future-you", line: story.outcomes[band], image: artPath(caseId, "result-" + band), motion: band === "strong" ? "result-burst" : "result-reveal" };
   }
   return null;
+}
+
+/* ------------------------------------------------------------------------- *
+ * Cinematic presentation (Sprint 1A). Pure display data: focal points,
+ * camera presets, lighting and character emotions. Nothing here is read by
+ * game-core.mjs, and nothing here may change coins, options or outcomes.
+ * ------------------------------------------------------------------------- */
+
+export const CHARACTER_STATES = Object.freeze(["idle", "enter", "talking", "surprised", "worried", "celebrating", "reflecting", "exit"]);
+export const CAMERA_PRESETS = Object.freeze(["push", "pull", "pan-left", "pan-right", "pan-down", "drift", "still"]);
+export const SCENE_EFFECTS = Object.freeze(["none", "impact", "victory", "glow", "dim"]);
+
+// Portraits are raster concepts on dark plates. `cutout` stays null until a
+// transparent export exists; the renderer then switches off the soft mask.
+export const CHARACTER_ART = Object.freeze({
+  "gwap-o": { image: "/assets/characters/gwap-o", cutout: null, accent: "#13dd13", focus: "50% 46%", zoom: 1.04 },
+  advisor: { image: "/assets/characters/advisor", cutout: null, accent: "#36e07a", focus: "46% 26%", zoom: 1.5 },
+  "market-force": { image: "/assets/characters/market-force", cutout: null, accent: "#a855f7", focus: "52% 30%", zoom: 1.45 },
+  "future-you": { image: "/assets/characters/future-you", cutout: null, accent: "#2dd4bf", focus: "46% 32%", zoom: 1.35 }
+});
+
+const pivotScenes = {
+  intro: { title: "Mission brief", focal: "34% 42%", camera: "push", origin: "30% 38%", glow: "#13dd13", glowAt: "18% 22%", particles: "rain", emotion: "talking" },
+  "decision-01": { title: "The $10M question", focal: "56% 18%", camera: "pan-right", origin: "50% 20%", glow: "#2dd4bf", glowAt: "62% 30%", particles: "dust", emotion: "talking" },
+  "decision-02": { title: "The rival deal", focal: "62% 36%", camera: "push", origin: "64% 28%", glow: "#a855f7", glowAt: "30% 30%", particles: "sparks", emotion: "surprised" },
+  "decision-03": { title: "The warehouse", focal: "50% 28%", camera: "pan-down", origin: "50% 24%", glow: "#f59e0b", glowAt: "50% 6%", particles: "dust", emotion: "reflecting" },
+  "decision-04": { title: "Investor day", focal: "50% 30%", camera: "push", origin: "50% 28%", glow: "#f59e0b", glowAt: "50% 40%", particles: "dust", emotion: "worried" },
+  "result-strong": { title: "A platform is born", focal: "40% 26%", camera: "push", origin: "36% 30%", glow: "#13dd13", glowAt: "70% 25%", particles: "coins", emotion: "celebrating", effect: "victory" },
+  "result-steady": { title: "Still standing", focal: "55% 42%", camera: "drift", origin: "55% 40%", glow: "#2dd4bf", glowAt: "70% 20%", particles: "dust", emotion: "talking", effect: "glow" },
+  "result-rough": { title: "Exposed", focal: "46% 58%", camera: "pan-down", origin: "46% 50%", glow: "#f59e0b", glowAt: "40% 30%", particles: "dust", emotion: "reflecting", effect: "dim" },
+  "result-collapse": { title: "Out of runway", focal: "44% 72%", camera: "pull", origin: "44% 70%", glow: "#ef4444", glowAt: "70% 60%", particles: "none", emotion: "worried", effect: "impact" }
+};
+
+// Consequence reactions are keyed by the exact resolved outcome text the
+// player is already shown, so the emotion can never disagree with (or reveal
+// more than) the story beat. Unknown text falls back to a neutral reflection.
+const pivotReactions = {
+  "You bet the next $10 million on streaming before the audience was ready, and the infrastructure bill arrived first.": "worried",
+  "You squeezed more margin from DVDs and let rivals spend first on streaming.": "reflecting",
+  "With little runway left, protecting DVD cash kept the company alive while you planned the next move.": "celebrating",
+  "You funded a small streaming pilot, and DVD cash paid for the experiment.": "celebrating",
+  "The pilot ate into thin cash, leaving no buffer for the quarters ahead.": "worried",
+  "The exclusive deal lifted sign-ups for a season, but its cost stayed on the books long after the buzz faded.": "surprised",
+  "Your own app let subscribers stream the catalog you already owned, and cancellations began to slow.": "celebrating",
+  "Licensed titles filled the app quickly, and the library grew without betting the budget on one exclusive.": "celebrating",
+  "Closing the warehouse saved money on paper, but loyal disc customers left faster than the app could absorb them.": "worried",
+  "Running both channels for another year kept disc customers while the app earned its place.": "talking",
+  "The warehouse kept shipping discs, but rising delivery costs ate most of the margin you had saved.": "reflecting"
+};
+
+const PRESENTATION = Object.freeze({ "streaming-pivot": { scenes: pivotScenes, reactions: pivotReactions } });
+
+export function hasStoryMode(caseId) {
+  return Object.hasOwn(PRESENTATION, caseId);
+}
+
+function sceneKey(phase, { round, band } = {}) {
+  if (phase === "intro") return "intro";
+  if (phase === "decision" || phase === "consequence") return Number.isInteger(round) && round >= 0 && round <= 3 ? "decision-" + String(round + 1).padStart(2, "0") : null;
+  if (phase === "result") return STORY_RESULT_BANDS.includes(band) ? "result-" + band : null;
+  return null;
+}
+
+/** Display-only direction for one shot. Returns null outside Story Mode. */
+export function sceneDirection(caseId, phase, opts = {}) {
+  const config = PRESENTATION[caseId];
+  const key = sceneKey(phase, opts);
+  if (!config || !key) return null;
+  const scene = config.scenes[key];
+  return {
+    key,
+    base: `/assets/scenes/${caseId}/${key}`,
+    title: scene.title,
+    focal: scene.focal,
+    camera: scene.camera,
+    origin: scene.origin,
+    glow: scene.glow,
+    glowAt: scene.glowAt,
+    particles: scene.particles,
+    emotion: scene.emotion,
+    effect: scene.effect || "none"
+  };
+}
+
+export function reactionFor(caseId, outcomeText) {
+  return PRESENTATION[caseId]?.reactions[outcomeText] || "reflecting";
+}
+
+export function storyReactionTexts(caseId) {
+  return Object.keys(PRESENTATION[caseId]?.reactions || {});
 }

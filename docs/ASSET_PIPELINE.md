@@ -36,3 +36,15 @@ Use the same `intro`, `decision-01..04`, `result-<band>` pattern for:
 - Provide reserved image dimensions and preloading to prevent layout shift. Respect reduced motion.
 - Verify approval, export availability, asset licensing, and actual deployment paths before enabling live.
 - Work in isolated preview deployments until founder approves public release.
+
+## Cinematic Sprint 1 export status
+
+The nine approved Streaming Pivot illustrations and four character concept images were ingested from Adobe as compact JPEG files and committed as binary Git blobs. These are **real, checked-in image files**, not temporary Adobe links.
+
+Image paths for `streaming-pivot` use `.jpg`; the remaining quests keep reserved `.webp` paths until their artwork is exported.
+
+Sprint 1A adds a WebP variant (quality 78) next to every JPG; Story Mode serves WebP through `<picture>` and keeps the JPG fallback. Retain original artwork in Adobe.
+
+The character concepts are currently raster portraits rather than transparent cutouts; Story Mode shows them with a soft radial mask. Set `cutout` in `CHARACTER_ART` (story-runtime.mjs) when transparent exports exist.
+
+The gallery of source art remains [in Adobe Firefly](https://firefly.adobe.com/boards/id/urn:aaid:sc:US:32f3155f-9932-4f18-a211-0ea55372e883).
