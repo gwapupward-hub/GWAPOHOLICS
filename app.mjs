@@ -1,6 +1,6 @@
 import { BOT_USERNAME } from "./config.mjs";
 import { homeNarrator, cinematicMotionClass, toggleCinematicMotion, storyMotionEnabled, storyStage, introPanel, decisionPanel, consequencePanel, resultPanel, resultScore } from "./cinematic-view.mjs";
-import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARACTERS, CHARACTER_ART } from "./story-runtime.mjs";
+import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARACTERS, CHARACTER_ART, storyAssetExt } from "./story-runtime.mjs";
 import { createSceneDirector, SCENE_STEPS, EXIT_STEPS } from "./story-director.mjs";
 import { bindTypewriter, DEFAULT_TYPE_SPEED } from "./typewriter.mjs";
 import { CASES, DIMENSIONS, RECOVERY_QUESTIONS } from "./cases.mjs";
@@ -296,7 +296,7 @@ function preloadImage(base) {
   if (!base || story.preloaded.has(base)) return;
   const img = new Image();
   img.decoding = "async";
-  img.src = base + ".webp";
+  img.src = base + "." + storyAssetExt(base);
   story.preloaded.set(base, img);
 }
 

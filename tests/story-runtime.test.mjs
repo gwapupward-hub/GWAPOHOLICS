@@ -9,7 +9,7 @@ test("narrative configuration maps exactly to the existing five cases", () => {
 
 test("every case has intro, four decisions and four result scene definitions", () => {
   for (const quest of CASES) {
-    const extension = quest.id === "streaming-pivot" ? "jpg" : "webp";
+    const extension = ["streaming-pivot","brand-backlash"].includes(quest.id) ? "jpg" : "webp";
     const intro = narrativeScene(quest.id, "intro");
     assert.ok(intro?.image?.endsWith("/intro." + extension));
     assert.ok(STORY_CHARACTERS[intro.speaker]);

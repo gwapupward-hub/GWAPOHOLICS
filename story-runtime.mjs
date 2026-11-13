@@ -94,7 +94,7 @@ const data = {
 export const STORYLINES = Object.freeze(data);
 
 function artPath(caseId, suffix) {
-  return `/assets/scenes/${caseId}/${suffix}.${caseId === "streaming-pivot" ? "jpg" : "webp"}`;
+  return `/assets/scenes/${caseId}/${suffix}.${["streaming-pivot", "brand-backlash"].includes(caseId) ? "jpg" : "webp"}`;
 }
 
 export function narrativeScene(caseId, phase, { round, band } = {}) {
@@ -164,7 +164,24 @@ const pivotReactions = {
   "The warehouse kept shipping discs, but rising delivery costs ate most of the margin you had saved.": "reflecting"
 };
 
-const PRESENTATION = Object.freeze({ "streaming-pivot": { scenes: pivotScenes, reactions: pivotReactions } });
+const brandScenes = Object.freeze({
+  intro: { title:"The formula gamble", focal:"50% 38%", camera:"push", origin:"50% 25%", glow:"#13dd13", glowAt:"45% 21%", particles:"dust", emotion:"talking" },
+  "decision-01": { title:"Launch or listen", focal:"50% 20%", camera:"pan-right", origin:"50% 24%", glow:"#13dd13", glowAt:"35% 19%", particles:"dust", emotion:"talking" },
+  "decision-02": { title:"Retail pressure", focal:"53% 34%", camera:"push", origin:"53% 34%", glow:"#a855f7", glowAt:"45% 22%", particles:"sparks", emotion:"worried" },
+  "decision-03": { title:"The public speaks", focal:"50% 32%", camera:"pan-left", origin:"50% 30%", glow:"#ff933b", glowAt:"50% 25%", particles:"dust", emotion:"surprised" },
+  "decision-04": { title:"Tell the truth", focal:"51% 28%", camera:"push", origin:"50% 25%", glow:"#a855f7", glowAt:"40% 20%", particles:"dust", emotion:"reflecting" },
+  "result-strong": { title:"Trust restored", focal:"48% 25%", camera:"push", origin:"50% 28%", glow:"#13dd13", glowAt:"65% 30%", particles:"coins", emotion:"celebrating", effect:"victory" },
+  "result-steady": { title:"A brand rebuilt carefully", focal:"48% 36%", camera:"drift", origin:"48% 30%", glow:"#2dd4bf", glowAt:"50% 30%", particles:"dust", emotion:"reflecting", effect:"glow" },
+  "result-rough": { title:"Trust is expensive", focal:"49% 43%", camera:"pan-down", origin:"50% 45%", glow:"#f59e0b", glowAt:"45% 35%", particles:"dust", emotion:"worried", effect:"dim" },
+  "result-collapse": { title:"Loyalty has limits", focal:"54% 53%", camera:"pull", origin:"53% 45%", glow:"#ef4444", glowAt:"65% 40%", particles:"none", emotion:"worried", effect:"dim" }
+});
+export function storyAssetExt(base) {
+  return String(base).startsWith("/assets/scenes/brand-backlash/") ? "jpg" : "webp";
+}
+const PRESENTATION = Object.freeze({
+  "streaming-pivot": { scenes: pivotScenes, reactions: pivotReactions },
+  "brand-backlash": { scenes: brandScenes, reactions: {} }
+});
 
 export function hasStoryMode(caseId) {
   return Object.hasOwn(PRESENTATION, caseId);
@@ -184,6 +201,7 @@ export function sceneDirection(caseId, phase, opts = {}) {
   if (!config || !key) return null;
   const scene = config.scenes[key];
   return {
+    caseId,
     key,
     base: `/assets/scenes/${caseId}/${key}`,
     title: scene.title,
