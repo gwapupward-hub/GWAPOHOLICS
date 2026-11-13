@@ -45,9 +45,12 @@ test('authenticated player uses server authority for all four moves and resumes 
    await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:publicGameView(game,NOW)})});
   });
   const page=await context.newPage();
+  await page.route('https://telegram.org/js/**',r=>r.fulfill({status:200,contentType:'application/javascript',body:'/* Telegram WebApp mocked by addInitScript */'}));
   const pageErrors=[];page.on('pageerror',err=>pageErrors.push(String(err)));
   await page.goto(BASE,{waitUntil:'domcontentloaded'});
   await page.locator('[data-action="open-case"][data-case="'+ID+'"]').first().waitFor();
+  assert.equal(sessionCalls,1,'test must use signed Telegram server mode instead of browser-local demo');
+  assert.match(await page.locator('.prototype-tag').innerText(),/VERIFIED TELEGRAM PLAYER/);
   await page.locator('[data-action="open-case"][data-case="'+ID+'"]').first().click();
   await page.locator('[data-action="decide"]').click();
   for(let i=0;i<4;i++){
