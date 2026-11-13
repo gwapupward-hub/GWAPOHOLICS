@@ -33,8 +33,9 @@ test('public game state never sends seed, hidden deltas or internal ledger',()=>
  const v=publicGameView(g);
  assert.equal(v.balance,1000);
  assert.equal('seed' in v,false);
- assert.equal('ledger' in v,false);
- assert.equal('profile' in v,false);
+ assert.equal(v.ledger.length,1);
+ assert.equal(typeof v.profile,'object');
+ assert.ok(Array.isArray(v.evidence['streaming-pivot']));
 });
 test('four choices settle in one transaction and duplicated retry is idempotent',async()=>{
  const store=testStore();
@@ -77,4 +78,16 @@ test('idempotency key cannot be reused for a different command',async()=>{
  const store=testStore();
  await executeGameCommand({store,userId:uid,command:'start',caseId:id,requestId:'shared-key'});
  await assert.rejects(()=>executeGameCommand({store,userId:uid,command:'start',caseId:'brand-backlash',requestId:'shared-key'}),/requestId reused/);
+});
+
+test('public view contains earned-only decision history and a safe resume step',async()=>{
+ const g=createGame(1700000000000,153);
+ const state=await executeGameCommand({
+  store:testStore(153),userId:uid,command:'start',caseId:id,requestId:'safe-path'
+ });
+ assert.equal(state.draft.path.length,0);
+ assert.equal(state.draft.step.index,0);
+ assert.equal('seed' in state,false);
+ assert.equal('delta' in state.draft.step.choices[0],false);
+ assert.equal('shifted' in state.draft.step.choices[0],false);
 });

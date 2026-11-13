@@ -7,7 +7,7 @@ import {randomBytes,createHash} from 'node:crypto';
 import {CASES,RECOVERY_QUESTIONS} from '../cases.mjs';
 import {
   createGame, startCase, chooseStep, completeChain, completeRecovery,
-  isLocked, recoveryAvailable, stageView, chainResult, isValidGame
+  isLocked, recoveryAvailable, stageView, chainResult, evidenceFor, isValidGame
 } from '../game-core.mjs';
 
 function requireString(s,name,max=90){
@@ -24,13 +24,34 @@ export function publicGameView(game,now=Date.now()){
   const quest=game.draft&&CASES.find(c=>c.id===game.draft.caseId);
   const draft=game.draft?{
     caseId:game.draft.caseId,
+    path:[...game.draft.path],
     round:game.draft.path.length,
     step:quest&&game.draft.path.length<4?stageView(quest,game.draft.path,game.seed):null
   }:null;
+  // Render only earned results. No random seed or future choice payoffs escape.
+  const completed=game.played.map(run=>{
+    const caseData=CASES.find(c=>c.id===run.caseId);
+    const earned=caseData?chainResult(caseData,run.path,game.seed):null;
+    return {
+      caseId:run.caseId,path:[...run.path],delta:run.delta,band:run.band,
+      balanceAfter:run.balanceAfter,at:run.at,
+      result:earned?{
+        band:earned.band,verdict:earned.verdict,narrative:earned.narrative,
+        steps:earned.steps.map(x=>({
+          prompt:x.prompt,label:x.label,delta:x.delta,
+          reasons:x.reasons,outcome:x.outcome
+        }))
+      }:null
+    };
+  });
+  const evidence=Object.fromEntries(CASES.map(entry=>[entry.id,evidenceFor(entry,game.seed)]));
   return Object.freeze({
     balance:game.balance,
-    completed:game.played.map(r=>({caseId:r.caseId,band:r.band,delta:r.delta,balanceAfter:r.balanceAfter,completedAt:r.at})),
-    draft,
+    completed,draft,evidence,
+    profile:{...game.profile},
+    ledger:game.ledger.map(({id,type,label,amount,balanceAfter,at})=>({
+      id,type,label,amount,balanceAfter,at
+    })),
     locked:isLocked(game),
     recoveryAvailable:recoveryAvailable(game,now),
     lastRecoveryAt:game.lastRecoveryAt
