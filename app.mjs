@@ -486,18 +486,26 @@ function skipStory() {
 }
 
 // Applies a decision through the existing game core, unchanged from the classic flow.
-function commitChoice(id) {
+async function commitChoice(id) {
   try {
     const current = getCase();
-    game = chooseStep(game, caseId, id);
-    if (game.draft.path.length === current.stages.length) {
-      game = completeChain(game, caseId);
-      stage = "result";
-      countPending = true;
-      try { tg?.HapticFeedback?.notificationOccurred(game.played.at(-1).delta >= 0 ? "success" : "warning"); } catch {}
-    } else stage = "beat";
-    persist(); render(); if (!story.active) window.scrollTo({ top: 0, behavior: "smooth" });
-  } catch (error) { showToast(error.message); }
+    if (game.remote) {
+      game = await remoteCommand("choose",{caseId,choiceId:id});
+      if (game.played.some(run=>run.caseId===caseId)) {
+        stage="result";countPending=true;
+        try {tg?.HapticFeedback?.notificationOccurred(game.played.at(-1).delta>=0?"success":"warning");}catch{}
+      } else stage="beat";
+    } else {
+      game = chooseStep(game, caseId, id);
+      if (game.draft.path.length === current.stages.length) {
+        game = completeChain(game, caseId);
+        stage = "result";countPending=true;
+        try { tg?.HapticFeedback?.notificationOccurred(game.played.at(-1).delta >= 0 ? "success" : "warning"); } catch {}
+      } else stage = "beat";
+      persist();
+    }
+    render(); if (!story.active) window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (error) { showToast(error.message); if(game.remote)await resyncRemote(); }
   finally { moveBusy = false; }
 }
 
@@ -574,7 +582,7 @@ root.addEventListener("click", async (event) => {
   if (action === "nav") { changeView(button.dataset.view); return; }
   if (action === "open-case") { openCase(button.dataset.case); return; }
   if (action === "decide") {
-    try { game = startCase(game, caseId); persist(); stage = "decide"; selectedChoice = null; haptic(); render(); }
+    try { if(game.remote) game=await remoteCommand("start",{caseId}); else {game=startCase(game,caseId);persist();} stage = "decide"; selectedChoice = null; haptic(); render(); }
     catch (error) { showToast(error.message); }
     return;
   }
@@ -594,14 +602,18 @@ root.addEventListener("click", async (event) => {
     if (!selectedChoice || !caseId) return;
     try {
       const entry = getCase();
-      game = chooseStep(game, caseId, selectedChoice);
-      selectedChoice = null;
-      if (game.draft.path.length === entry.stages.length) {
-        game = completeChain(game, caseId);
-        stage = "result";
-        countPending = true;
+      if(game.remote){
+        game=await remoteCommand("choose",{caseId,choiceId:selectedChoice});
+        if(game.played.some(run=>run.caseId===caseId)){stage="result";countPending=true;}
+        else stage="beat";
+      }else{
+        game = chooseStep(game, caseId, selectedChoice);
+        if (game.draft.path.length === entry.stages.length) {
+          game = completeChain(game, caseId);stage="result";countPending=true;
+        }
+        persist();
       }
-      persist();
+      selectedChoice=null;
       haptic("medium");
       render();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -617,14 +629,14 @@ root.addEventListener("click", async (event) => {
   }
 });
 
-root.addEventListener("submit", (event) => {
+root.addEventListener("submit", async (event) => {
   if (event.target.id !== "recovery-form") return;
   event.preventDefault();
   const data = new FormData(event.target);
   const answers = RECOVERY_QUESTIONS.map((_, i) => data.get(`q${i}`) === null ? -1 : Number(data.get(`q${i}`)));
   try {
-    game = completeRecovery(game, answers);
-    persist();
+    if(game.remote)game=await remoteCommand("recover",{answers});
+    else {game=completeRecovery(game,answers);persist();}
     haptic("medium");
     if (isLocked(game)) showToast(`+${RECOVERY_REWARD} G earned. You're still below ${MIN_PLAY_BALANCE} G; return after your cooldown.`);
     else showToast(`+${RECOVERY_REWARD} G earned. You're back in the game!`);
