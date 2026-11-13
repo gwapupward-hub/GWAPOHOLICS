@@ -7,6 +7,9 @@
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "test": "node --test tests/*.test.mjs",
-    "check": "node --check app.mjs && node --check game-core.mjs && node --check cases.mjs && node --check config.mjs && node --check scripts/dev.mjs && node --check cinematic-view.mjs && node --check story-runtime.mjs && node --check story-director.mjs && node --check typewriter.mjs && node --check story-props.mjs && node --check brand-props.mjs && node --check season-props.mjs"
+    "check": "node --check app.mjs && node --check game-core.mjs && node --check cases.mjs && node --check config.mjs && node --check scripts/dev.mjs && node --check cinematic-view.mjs && node --check story-runtime.mjs && node --check story-director.mjs && node --check typewriter.mjs && node --check story-props.mjs && node --check brand-props.mjs && node --check season-props.mjs && node --check server-client.mjs && node --check server/telegram-auth.mjs && node --check server/game-service.mjs && node --check server/session.mjs && node --check server/http.mjs && node --check server/postgres-store.mjs && node --check api/session.js && node --check api/game.js && node --check api/logout.js"
+  },
+  "dependencies": {
+    "pg": "8.23.1"
   }
 }
