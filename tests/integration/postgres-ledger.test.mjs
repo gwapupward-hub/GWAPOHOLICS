@@ -89,5 +89,17 @@ test('real PostgreSQL: exactly-once settlement, atomic receipts, cross-instance 
   assert.equal(stranger.completed.length,0);
   const finalCounts=await pool.query('SELECT count(*)::int AS players FROM players');
   assert.equal(finalCounts.rows[0].players,2);
+  // Existing five command receipts count against the durable rate budget.
+  for(let i=0;i<25;i++){
+    await store.transaction(uid,tx=>tx.setReceipt('throttle-'+i,{ok:true},'a'.repeat(64)));
+  }
+  await assert.rejects(
+    ()=>store.transaction(uid,tx=>tx.setReceipt('throttle-over-limit',{ok:true},'a'.repeat(64))),
+    /Command rate limit exceeded/
+  );
+  const afterBudget=await pool.query(
+    'SELECT count(*)::int AS receipts FROM command_receipts WHERE telegram_user_id=$1',[uid]
+  );
+  assert.equal(afterBudget.rows[0].receipts,30);
  }finally{await pool.end()}
 });
