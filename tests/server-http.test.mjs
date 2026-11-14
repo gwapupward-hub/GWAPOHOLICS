@@ -63,6 +63,17 @@ test('fake signed data, invalid origins and missing secrets fail closed',async()
  await handleGame(req('GET'),o,{sessionSecret:SECRET,store:getStore(),now:NOW});
  assert.equal(o.statusCode,401);
 });
+test('rate-limited commands respond 429 and ask the client to retry later',async()=>{
+ const s=res();
+ await handleSession(req('POST',{initData:telegramLaunch()}),s,{botToken:BOT,sessionSecret:SECRET,now:NOW});
+ const cookie=s.getHeader('set-cookie').split(';')[0];
+ const out=res();
+ const store={transaction(){throw new Error('Command rate limit exceeded')}};
+ await handleGame(req('POST',{command:'start',caseId:'streaming-pivot',requestId:'limited-1'},{cookie}),out,{sessionSecret:SECRET,store,now:NOW});
+ assert.equal(out.statusCode,429);
+ assert.deepEqual(JSON.parse(out.body),{error:'rate_limited'});
+ assert.equal(out.getHeader('retry-after'),'60');
+});
 test('malicious client balances or forged post from another origin are rejected',async()=>{
  const s=res();
  await handleSession(req('POST',{initData:telegramLaunch()}),s,{botToken:BOT,sessionSecret:SECRET,now:NOW});
