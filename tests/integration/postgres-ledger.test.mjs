@@ -87,8 +87,28 @@ test('real PostgreSQL: exactly-once settlement, atomic receipts, cross-instance 
   });
   assert.equal(stranger.balance,1000);
   assert.equal(stranger.completed.length,0);
+  // Prove the entire five-quest season works on the authoritative adapter,
+  // not just in browser demo. Give each case an isolated Telegram identity.
+  for(const [index,episode] of CASES.entries()){
+    const seasonUid=String(3434343400+index);
+    await executeGameCommand({store,userId:seasonUid,command:'start',caseId:episode.id,requestId:'begin-season',now});
+    let finalState;
+    for(let i=0;i<episode.stages.length;i++){
+      finalState=await executeGameCommand({
+        store,userId:seasonUid,command:'choose',caseId:episode.id,
+        choiceId:episode.stages[i].options[0].id,requestId:'season-'+i,now:now+i
+      });
+    }
+    assert.equal(finalState.completed.length,1,episode.id);
+    assert.equal(finalState.completed[0].caseId,episode.id);
+    const stored=await pool.query(
+      "SELECT count(*)::int AS payouts FROM virtual_ledger WHERE telegram_user_id=$1 AND event_type='quest_settlement'",
+      [seasonUid]
+    );
+    assert.equal(stored.rows[0].payouts,1,episode.id);
+  }
   const finalCounts=await pool.query('SELECT count(*)::int AS players FROM players');
-  assert.equal(finalCounts.rows[0].players,2);
+  assert.equal(finalCounts.rows[0].players,2+CASES.length);
   // Existing five command receipts count against the durable rate budget.
   for(let i=0;i<25;i++){
     await store.transaction(uid,tx=>tx.setReceipt('throttle-'+i,{ok:true},'a'.repeat(64)));
