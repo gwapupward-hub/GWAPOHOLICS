@@ -364,7 +364,7 @@ function storyShot(entry) {
   const base = { balance: game.balance };
 
   if (stage === "result" && run) {
-    const result = chainResult(entry, run.path, game.seed);
+    const result = visibleResult(entry, run);
     const direction = sceneDirection(entry.id, "result", { band: result.band });
     const scene = narrativeScene(entry.id, "result", { band: result.band });
     return { ...base, key: `${entry.id}:result`, phase: "result", direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
@@ -374,7 +374,7 @@ function storyShot(entry) {
   }
   if (stage === "beat" && draftOpen && game.draft.path.length) {
     const made = game.draft.path.length;
-    const step = stageView(entry, game.draft.path, game.seed);
+    const step = visibleStage(entry);
     const direction = sceneDirection(entry.id, "consequence", { round: made - 1 });
     const emotion = reactionFor(entry.id, step.opening);
     const effect = emotion === "worried" ? "impact" : emotion === "celebrating" ? "glow" : emotion === "talking" ? "none" : "dim";
@@ -383,7 +383,7 @@ function storyShot(entry) {
       label: `${entry.title}: consequence of move ${made}`, ribbon: `MISSION ${entry.number} · THE FALLOUT`, progress: { label: `MOVE ${made} LOCKED`, total, done: made, current: -1 } };
   }
   if (stage === "decide" && draftOpen) {
-    const step = stageView(entry, game.draft.path, game.seed);
+    const step = visibleStage(entry);
     const direction = sceneDirection(entry.id, "decision", { round: step.index });
     const scene = narrativeScene(entry.id, "decision", { round: step.index });
     return { ...base, key: `${entry.id}:decide:${step.index}`, phase: "decision", direction, speaker: scene.speaker, emotion: direction.emotion, effect: "none",
@@ -393,7 +393,7 @@ function storyShot(entry) {
   const direction = sceneDirection(entry.id, "intro");
   const scene = narrativeScene(entry.id, "intro");
   return { ...base, key: `${entry.id}:intro`, phase: "intro", direction, speaker: scene.speaker, emotion: direction.emotion, effect: "none",
-    lines: [scene.line, entry.story], panel: introPanel(entry, evidenceFor(entry, game.seed)),
+    lines: [scene.line, entry.story], panel: introPanel(entry, visibleEvidence(entry)),
     label: `${entry.title}: mission brief`, ribbon: ribbon(direction), progress: { label: `MISSION ${entry.number} · BRIEFING`, total, done: 0, current: -1 } };
 }
 
