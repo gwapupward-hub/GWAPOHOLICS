@@ -28,7 +28,7 @@ export function issueSessionCookie(uid,{secret,now=Date.now(),maxAge=MAX_AGE_SEC
  const token=payload+'.'+mac(payload,secret).toString('base64url');
  return COOKIE_NAME+'='+token+'; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age='+Math.min(maxAge,MAX_AGE_SECONDS);
 }
-export function parseSessionCookie(cookieHeader,{secret,now=Date.now()}={}){
+export function parseSessionCookie(cookieHeader,{secret,previousSecret,now=Date.now()}={}){
  if(typeof cookieHeader!=='string'||cookieHeader.length>8192)return null;
  const matches=cookieHeader.split(';').map(x=>x.trim()).filter(x=>x.startsWith(COOKIE_NAME+'='));
  if(matches.length!==1)return null;
@@ -38,7 +38,12 @@ export function parseSessionCookie(cookieHeader,{secret,now=Date.now()}={}){
  if(parts.length!==2||!/^[A-Za-z0-9_-]+$/.test(parts[0])||!/^[A-Za-z0-9_-]+$/.test(parts[1]))return null;
  let supplied;try{supplied=Buffer.from(parts[1],'base64url');}catch{return null}
  const expected=mac(parts[0],secret);
- if(supplied.length!==expected.length||!timingSafeEqual(supplied,expected))return null;
+ const validCurrent=supplied.length===expected.length&&timingSafeEqual(supplied,expected);
+ // During rotation only, honor a previous signing key for existing
+ // one-hour cookies. New cookies always use the current key.
+ const oldMac=previousSecret?mac(parts[0],previousSecret):null;
+ const validPrevious=oldMac&&supplied.length===oldMac.length&&timingSafeEqual(supplied,oldMac);
+ if(!validCurrent&&!validPrevious)return null;
  try{
   const data=JSON.parse(Buffer.from(parts[0],'base64url').toString('utf8'));
   const nowSeconds=Math.floor(now/1000);
