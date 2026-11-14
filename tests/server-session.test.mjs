@@ -20,6 +20,15 @@ test('expired, forged, repeated and invalid session cookies are denied',()=>{
  assert.equal(parseSessionCookie('',{secret:SECRET,now:NOW}),null);
  assert.match(clearSessionCookie(),/Max-Age=0/);
 });
+test('rotated signing key accepts old cookies only within their original lifetime',()=>{
+ const old=issueSessionCookie('1234567',{secret:SECRET,now:NOW}).split(';')[0];
+ const next='b'.repeat(48);
+ assert.equal(parseSessionCookie(old,{secret:next,now:NOW}),null);
+ assert.equal(parseSessionCookie(old,{secret:next,previousSecret:SECRET,now:NOW+1000}).userId,'1234567');
+ assert.equal(parseSessionCookie(old,{secret:next,previousSecret:SECRET,now:NOW+3600000}),null);
+ const fresh=issueSessionCookie('1234567',{secret:next,now:NOW}).split(';')[0];
+ assert.equal(parseSessionCookie(fresh,{secret:next,now:NOW}).userId,'1234567');
+});
 test('a secret shorter than 32 bytes is unusable',()=>{
  assert.throws(()=>issueSessionCookie('1234567',{secret:'short',now:NOW}),/unavailable/);
 });
