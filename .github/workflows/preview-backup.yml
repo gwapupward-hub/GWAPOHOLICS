@@ -1,0 +1,70 @@
+name: Encrypted Neon Preview backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 6 * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gwapoholics-preview-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: preview-backup
+    env:
+      B2_BUCKET: gwapoholics-db-backups
+      B2_ENDPOINT: https://s3.us-east-005.backblazeb2.com
+      AWS_ACCESS_KEY_ID: ${{ secrets.B2_BACKUP_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_BACKUP_APPLICATION_KEY }}
+      AWS_DEFAULT_REGION: us-east-005
+      DATABASE_URL: ${{ secrets.NEON_PREVIEW_BACKUP_DATABASE_URL }}
+      AGE_RECIPIENT: ${{ vars.BACKUP_AGE_RECIPIENT }}
+    steps:
+      - name: Validate backup configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in DATABASE_URL AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AGE_RECIPIENT; do
+            if [[ -z "${!name:-}" ]]; then echo "::error::Missing required configuration: $name"; exit 1; fi
+          done
+          [[ "$AGE_RECIPIENT" == age1* ]] || { echo "::error::Invalid age recipient"; exit 1; }
+          aws --version
+      - name: Install age
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y age
+      - name: Dump Preview PostgreSQL using PostgreSQL 18 client
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/gwap-backup"
+          chmod 700 "$RUNNER_TEMP/gwap-backup"
+          docker run --rm --network host \
+            --env DATABASE_URL \
+            --mount "type=bind,src=$RUNNER_TEMP/gwap-backup,dst=/out" \
+            postgres:18 \
+            bash -ec 'pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --file=/out/preview.dump'
+          test -s "$RUNNER_TEMP/gwap-backup/preview.dump"
+      - name: Encrypt and upload immutable backup
+        shell: bash
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/gwap-backup"
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          name="gwapoholics-preview-${stamp}-${GITHUB_RUN_ID}.dump.age"
+          age --recipient "$AGE_RECIPIENT" --output "$work/$name" "$work/preview.dump"
+          sha256sum "$work/$name" | awk '{print $1}' > "$work/$name.sha256"
+          aws --endpoint-url "$B2_ENDPOINT" s3 cp "$work/$name" "s3://$B2_BUCKET/postgres/$name" --no-progress
+          aws --endpoint-url "$B2_ENDPOINT" s3 cp "$work/$name.sha256" "s3://$B2_BUCKET/postgres/$name.sha256" --no-progress
+          echo "Encrypted archive and SHA256 checksum uploaded: postgres/$name"
+          echo "Verify bucket Object Lock default retention and restore independently before considering this production-ready."
+      - name: Remove local dump
+        if: always()
+        shell: bash
+        run: rm -rf "$RUNNER_TEMP/gwap-backup"
