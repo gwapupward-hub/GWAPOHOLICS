@@ -1,6 +1,6 @@
 # GWAPOHOLICS — Encrypted offsite Preview backups
 
-Status: **Prepared in PR only; not operational until secrets, bucket retention, and restore testing are verified.** No production deployment is authorized.
+Status: **Prepared in PR only; not operational until the workflow is activated, a backup is uploaded, and a restore test passes.** Environment configuration has been reported by the owner but not independently validated. No production deployment is authorized.
 
 ## Destination
 - Provider: Backblaze B2 S3 API
@@ -30,7 +30,7 @@ B2 key should be bucket-scoped, limited to `postgres/`, and allow upload; the AW
 ## Manual first backup
 1. Verify B2 bucket is private, Object Lock enabled, **default** 30-day retention configured, and a lifecycle policy is not undermining the recovery window.
 2. Create the GitHub Environment and its three secrets + one public variable.
-3. Merge this PR only after review (merge does not deploy production). From GitHub Actions, dispatch **Encrypted Neon Preview backup**.
+3. **Do not merge until the Vercel production-deployment consequences of merging to `main` have been explicitly reviewed and separately authorized.** A GitHub merge may trigger an automatic Vercel production deployment. The workflow cannot be treated as operational until it has been safely activated and manually dispatched.
 4. Verify successful run, two objects under `postgres/`, nonzero encrypted archive, and B2 Object Lock retention metadata.
 5. Confirm the checksum against the downloaded encrypted archive.
 
