@@ -52,16 +52,37 @@ test('authenticated player uses server authority for all four moves and resumes 
   assert.equal(sessionCalls,1,'test must use signed Telegram server mode instead of browser-local demo');
   assert.match(await page.locator('.prototype-tag').innerText(),/VERIFIED TELEGRAM PLAYER/);
   await page.locator('[data-action="open-case"][data-case="'+ID+'"]').first().click();
+  const serverEvidence=publicGameView(game,NOW).evidence[ID][2].value;
+  assert.ok((await page.locator('.story-stage.phase-intro .panel-evidence').innerText()).includes(serverEvidence),
+    'intro evidence must match authoritative server calculation');
   await page.locator('[data-action="decide"]').click();
   for(let i=0;i<4;i++){
    await page.locator('.story-stage.phase-decision').waitFor();
+   const serverStep=publicGameView(game,NOW).draft.step;
+   assert.equal((await page.locator('.story-stage.phase-decision .panel-prompt').innerText()).trim(),serverStep.prompt,
+     'narrator decision prompt must be the server-issued step');
    await page.locator('.stage-panel [data-action="choose"]').first().click();
    if(i<3){
     await page.locator('.story-stage.phase-consequence').waitFor();
+    const nextServerStep=publicGameView(game,NOW).draft.step;
+    const consequenceText=await page.locator('.story-stage.phase-consequence .stage-bubble .sr-only').innerText();
+    assert.ok(consequenceText.includes(nextServerStep.opening),
+      'reaction narrator must use server-issued outcome, not a guessed client seed');
     await page.locator('[data-action="next-step"]').click();
+    if(i===0){
+      // Reopen the Telegram app midmission; game must resume from server state.
+      await page.reload({waitUntil:'domcontentloaded'});
+      await page.locator('[data-action="open-case"][data-case="'+ID+'"]').first().waitFor();
+      await page.locator('[data-action="open-case"][data-case="'+ID+'"]').first().click();
+      await page.locator('.story-stage.phase-decision').waitFor();
+      assert.equal(game.draft.path.length,1);
+    }
    }
   }
   await page.locator('.story-stage.phase-result').waitFor();
+  const resultPanel=await page.locator('.story-stage.phase-result .stage-panel').innerText();
+  assert.ok(resultPanel.includes(String(game.balance)),
+    'cinematic result must display the confirmed server balance');
   assert.equal(game.played.length,1);
   assert.equal(game.ledger.filter(x=>x.type==='case').length,1);
   assert.equal(writes.filter(x=>x.command==='choose').length,4);
