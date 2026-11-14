@@ -4,7 +4,7 @@
  * in localStorage. Credentials are HttpOnly and automatically sent by browser.
  */
 function requireSuccess(response){
- if(!response?.ok)throw new Error(response?.status===401?'Telegram session expired':'Secure game service unavailable');
+ if(!response?.ok)throw new Error(response?.status===401?'Telegram session expired':response?.status===429?'Too many actions. Please try again in one minute.':'Secure game service unavailable');
  return response;
 }
 function authorizedHeaders(){return {'Content-Type':'application/json','X-GWAP-Request':'1'};}
