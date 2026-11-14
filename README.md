@@ -2,52 +2,57 @@
 
 **Make the call. Own the consequences.**
 
-GWAPOHOLICS is a Telegram-first cinematic business simulation from Tha GwapSpot. It teaches money and business decision-making through five fictional historically inspired quests.
+GWAPOHOLICS is a cinematic, Telegram-native business education game from Tha GwapSpot. Five fictional scenarios teach financial and business decision-making through story-driven consequences.
 
-## Project status
+## v1 status — code complete, public release not approved
 
-**v1 development.** Repository source is imported from the playable Vercel preview. The Telegram bot's production settings and domain were not changed.
+The `feat/v1-private-beta-release-candidate` branch is an implemented, tested **v1.0.0 release candidate**, not a production launch. Preview authentication and persistence are enabled for the private `@TestGwap_bot` only. The official `@GwapoholicsBot`, Vercel production, `main` and the owned `gwapoholics.ton` domain have not been updated.
 
-- [Telegram bot: @GwapoholicsBot](https://t.me/GwapoholicsBot)
-- Reserved game domain: `gwapoholics.ton`
-- [Existing Vercel preview](https://gwap-telegram-business-77archyhr-bigdaddygwaps-projects.vercel.app/?demo=1)
-- [Approved Adobe character and scene board](https://firefly.adobe.com/boards/id/urn:aaid:sc:US:32f3155f-9932-4f18-a211-0ea55372e883)
+- [Private test bot: @TestGwap_bot](https://t.me/TestGwap_bot) — open the Mini App inside Telegram for authenticated progress.
+- [Browser-only cinematic demo](https://gwap-telegram-business-1i0jiycu2-bigdaddygwaps-projects.vercel.app/?demo=1) — uses local demo data, not a real player account.
+- [Draft v1 release PR](https://github.com/gwapupward-hub/GWAPOHOLICS/pull/11) — targets `main`, must not merge without separate founder approval.
+- [Release acceptance and operations runbook](docs/V1_RELEASE_RUNBOOK.md)
+- [Adobe character and scene board](https://firefly.adobe.com/boards/id/urn:aaid:sc:US:32f3155f-9932-4f18-a211-0ea55372e883)
 
-## v1 gameplay
+## Complete v1 gameplay
 
-- Start with **1,000 virtual G coins**.
-- Each of five cases has four linked decisions and three options per decision.
-- Cases settle once: finished quests cannot be replayed to farm rewards.
-- Below **100 G**, missions lock; educational recovery is available with a cooldown.
-- G coins are fictional and **cannot be withdrawn or exchanged**. No Solana token has been minted or launched.
+- Five full-screen cinematic quests, nine illustrated scenes each (45 total), character/typewriter narration, staged props, transitions and reduced-motion support.
+- Four linked player decisions per quest, unique outcome bands and a server-settled balance.
+- Each new Telegram player starts with **1,000 virtual G coins**. At under **100 G**, missions lock, with limited educational recovery after the required cooldown.
+- Quests can settle **only once**; duplicate network requests return the previously saved result.
+- Game balance, progress, coin ledger and completed quests persist through a dedicated Neon/PostgreSQL store and can be resumed by the same Telegram identity on another device.
+- G coins are **not** a tradable asset, have **no cash value**, and **cannot** be withdrawn, exchanged or redeemed. No Solana token has been deployed.
 
-## Run
+## Development and quality checks
 
-Requires Node.js 22+; no production npm dependencies.
+Node.js 22+ and npm are required. The live adapter depends on `pg`.
 
 ```bash
+npm install
 npm run check
 npm test
 npm run dev
 ```
 
-Then open http://localhost:4173/?demo=1. This browser demonstration does not replace Telegram WebApp integration.
+Open `http://localhost:4173/?demo=1` to play without Telegram or server credentials. Never use browser demo state as authoritative data.
 
-## Security / economy status
+CI on the release branch runs `baseline`, `mobile-engines`, and `postgres-ledger`. The PostgreSQL integration job provisions disposable test storage and checks all five cases, idempotent settlement and cross-instance state. The main branch has an active ruleset requiring all three checks.
 
-This imported prototype saves progress to **localStorage** on the user's device. Browser balances can be changed and are **not trusted**. Before accepting public player balances, quests, or rewards, implement server-validated Telegram `initData`, a durable authoritative ledger, atomic settlements, rate limits, and recovery cooldown enforcement. Never put Telegram bot tokens or secret keys into client-side code.
+## Authenticated Preview architecture
 
-## Production roadmap
+- `POST /api/session`: validates Telegram raw `initData`, then issues a short-lived HttpOnly, Secure session.
+- `GET /api/game`: returns only player-visible state.
+- `POST /api/game`: authenticated `start`, `choose`, `recover` with unique command receipts.
+- PostgreSQL serializes a player's writes, enforces one settlement per quest and limits new commands to 30/player/60 seconds.
+- `GWAP_SESSION_SECRET_PREVIOUS` supports safe one-hour rotation of the signing key.
+- Preview-only server secrets: `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, `GWAP_SESSION_SECRET`. Never expose them in client bundles, screenshots or repository content.
 
-1. ✅ Import playable source and baseline automated checks.
-2. Integrate the **Streaming Pivot** cinematic experience in an isolated feature branch and preview. *(Sprint 1A: full-screen Story Mode — see [notes](docs/CINEMATIC_SPRINT_1A.md).)*
-3. Expand the same scene engine to the other four quests.
-4. Build server-side authenticated persistent player progress.
-5. Run iPhone/Android Telegram QA, optimize assets, private beta.
-6. Request explicit approval before any live production release.
+See [Authenticated API](docs/AUTHENTICATED_API.md) for request contract and deployment constraints.
 
-See [v1 plan](docs/V1_PRODUCTION_PLAN.md) and [scene asset pipeline](docs/ASSET_PIPELINE.md).
+## Remaining release acceptance
+
+Physical iOS and Android Telegram WebView QA for all five quests, tested cross-device continuity, offsite backup/restore, ingress rate limiting and monitoring, a small private tester cohort, and separate approval for production infrastructure, domain and official bot. **Do not treat green CI or a READY Preview as permission for public release.**
 
 ## Provenance
 
-The source was recovered from the existing founder-approved Vercel preview on November 13, 2026. The existing gameplay engine and five case definitions remain unchanged. Historical references are educational scenarios, not real financial records.
+Original gameplay was recovered from the founder-approved Vercel preview on November 13, 2026, preserving the canonical five-case game engine while upgrading its presentation and authenticated persistence. Historical references are educational fiction, not verified financial outcomes.
