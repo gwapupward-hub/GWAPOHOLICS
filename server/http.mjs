@@ -66,11 +66,11 @@ export async function handleLogout(req,res){
  if(!authorizedMutation(req)){send(res,403,{error:'forbidden_origin'});return}
  send(res,200,{authenticated:false},clearSessionCookie());
 }
-export async function handleGame(req,res,{sessionSecret,store,now=Date.now()}={}){
+export async function handleGame(req,res,{sessionSecret,previousSessionSecret,store,now=Date.now()}={}){
  if(!['GET','POST'].includes(req.method)){send(res,405,{error:'method_not_allowed'});return}
  if(!sessionSecret||!store){send(res,503,{error:'game_service_unavailable'});return}
  let session;
- try{session=parseSessionCookie(req.headers?.cookie,{secret:sessionSecret,now})}catch{
+ try{session=parseSessionCookie(req.headers?.cookie,{secret:sessionSecret,previousSecret:previousSessionSecret,now})}catch{
   send(res,503,{error:'game_service_unavailable'});return
  }
  if(!session){send(res,401,{error:'sign_in_required'});return}
@@ -90,6 +90,10 @@ export async function handleGame(req,res,{sessionSecret,store,now=Date.now()}={}
   const message=String(e?.message||'');
   if(/not configured|not exist|database|connection|timeout|unavailable/i.test(message)){
    send(res,503,{error:'game_service_unavailable'});return
+  }
+  if(/Command rate limit exceeded/i.test(message)){
+   res.setHeader('Retry-After','60');
+   send(res,429,{error:'rate_limited'});return
   }
   if(/duplicate idempotency|requestId reused/i.test(message)){
    send(res,409,{error:'request_id_conflict'});return
