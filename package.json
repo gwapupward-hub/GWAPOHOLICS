@@ -1,9 +1,9 @@
 {
   "name": "gwapoholics",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.1",
   "private": true,
   "type": "module",
-  "description": "Telegram-native cinematic business simulator (prototype)",
+  "description": "Telegram-native cinematic business simulator (v1 private-beta release candidate)",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "test": "node --test tests/*.test.mjs",
