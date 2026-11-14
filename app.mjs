@@ -1,6 +1,7 @@
 import { BOT_USERNAME } from "./config.mjs";
+import { startTelegramSession, refreshPlayer, sendGameCommand } from "./server-client.mjs";
 import { homeNarrator, cinematicMotionClass, toggleCinematicMotion, storyMotionEnabled, storyStage, introPanel, decisionPanel, consequencePanel, resultPanel, resultScore } from "./cinematic-view.mjs";
-import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARACTERS, CHARACTER_ART } from "./story-runtime.mjs";
+import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARACTERS, CHARACTER_ART, storyAssetExt } from "./story-runtime.mjs";
 import { createSceneDirector, SCENE_STEPS, EXIT_STEPS } from "./story-director.mjs";
 import { bindTypewriter, DEFAULT_TYPE_SPEED } from "./typewriter.mjs";
 import { CASES, DIMENSIONS, RECOVERY_QUESTIONS } from "./cases.mjs";
@@ -15,7 +16,11 @@ const root = document.querySelector("#app");
 const tg = window.Telegram?.WebApp;
 const isTelegram = Boolean(tg?.initData);
 const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname) || location.protocol === "file:";
-const canPlay = isTelegram || localPreview || new URLSearchParams(location.search).get("demo") === "1";
+const explicitDemo = new URLSearchParams(location.search).get("demo") === "1";
+const canPlay = isTelegram || localPreview || explicitDemo;
+const remoteRequested = isTelegram && !explicitDemo;
+let remoteStatus = remoteRequested ? "connecting" : "demo";
+let pendingCommand = null;
 
 const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
 const coins = (value) => new Intl.NumberFormat("en-US").format(value);
@@ -39,6 +44,7 @@ let resetArmed = false;
 let moveBusy = false;
 
 function persist() {
+  if (game.remote) return;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(game)); }
   catch { showToast("Device storage is unavailable; your progress may not persist."); }
 }
@@ -91,6 +97,49 @@ function showToast(message) {
   toast = message;
   renderToast();
   window.setTimeout(() => { if (toast === message) { toast = null; renderToast(); } }, 3800);
+}
+
+
+function visibleStage(entry){
+  if(game.remote){
+    const step=game.draft?.step;
+    if(!step||game.draft.caseId!==entry.id)throw new Error('Secure step unavailable');
+    return step;
+  }
+  return stageView(entry,game.draft.path,game.seed);
+}
+function visibleResult(entry,run){
+  if(game.remote){
+    if(!run?.result)throw new Error('Secure result unavailable');
+    return run.result;
+  }
+  return chainResult(entry,run.path,game.seed);
+}
+function visibleEvidence(entry){
+  return game.remote ? (game.evidence?.[entry.id] || []) : evidenceFor(entry,game.seed);
+}
+async function remoteCommand(command,extra={}){
+  const signature=JSON.stringify({command,...extra});
+  const requestId=pendingCommand?.signature===signature ? pendingCommand.requestId : crypto.randomUUID();
+  pendingCommand={signature,requestId};
+  const next=await sendGameCommand({command,...extra,requestId});
+  pendingCommand=null;
+  return next;
+}
+async function resyncRemote(){
+  if(!game.remote)return;
+  try{game=await refreshPlayer();leaveStory();render()}
+  catch{showToast('Connection interrupted. Confirmed progress is saved on the server.')}
+}
+async function authenticatePlayer(){
+  remoteStatus='connecting';render();
+  try{
+    game=await startTelegramSession(tg?.initData);
+    remoteStatus='ready';view='home';caseId=null;stage='brief';
+  }catch{
+    remoteStatus='failed';
+  }
+  render();
 }
 
 function changeView(next) {
@@ -171,12 +220,12 @@ return `<div class="arcade-flow page-enter"><div class="arcade-flowtop"><button 
 <div class="arcade-new">NEW MISSION UNLOCKED <b>✦</b></div>
 <div class="arcade-emblem"><strong>${entry.number}</strong><span>★</span></div><h1 class="arcade-title">${esc(entry.title.toUpperCase())}<em>.</em></h1><p class="arcade-hook">${esc(entry.hook)}</p>
 <div class="arcade-story"><div><strong>THE SITUATION</strong><small>${esc(entry.era)}</small></div><p>${esc(entry.story)}</p></div>
-<div class="arcade-evidence">${evidenceFor(entry,game.seed).slice(0,3).map(e=>`<div><small>${esc(e.label)}</small><b>${esc(e.value)}</b></div>`).join("")}</div>
+<div class="arcade-evidence">${visibleEvidence(entry).slice(0,3).map(e=>`<div><small>${esc(e.label)}</small><b>${esc(e.value)}</b></div>`).join("")}</div>
 <p class="arcade-tip">4 quick moves. Every decision changes what happens next.</p><button class="arcade-button" data-action="decide">LET'S DO BUSINESS <b>→</b></button><p class="arcade-fine">Your coins settle only after all four moves. All outcomes are fictional.</p></div>`;
 }
 
 function caseDecision(entry) {
-const step=stageView(entry,game.draft.path,game.seed);
+const step=visibleStage(entry);
 return `<div class="arcade-flow page-enter"><div class="arcade-flowtop"><button data-action="nav" data-view="home">← PAUSE</button><span>MISSION ${entry.number}</span></div>
 <div class="arcade-round"><strong>ROUND ${step.index+1}</strong><span>OF ${step.total}</span></div>
 <div class="arcade-meter">${Array.from({length:step.total},(_,i)=>`<i class="${i<step.index?"done":i===step.index?"now":""}"></i>`).join("")}</div>
@@ -187,7 +236,7 @@ return `<div class="arcade-flow page-enter"><div class="arcade-flowtop"><button 
 }
 
 function beatPage(entry) {
-const n=game.draft.path.length,step=stageView(entry,game.draft.path,game.seed);
+const n=game.draft.path.length,step=visibleStage(entry);
 return `<div class="arcade-beat page-enter"><div class="arcade-round"><strong>MOVE ${n} LOCKED IN</strong><span>✓</span></div><div class="arcade-meter">${Array.from({length:4},(_,i)=>`<i class="${i<n?"done":""}"></i>`).join("")}</div>
 <div class="arcade-beat-icon"><div class="arcade-circle"></div><span>⚡</span></div>
 <div class="arcade-new">THE STORY CHANGES</div><h1>THAT HAD<br><em>CONSEQUENCES.</em></h1>
@@ -196,7 +245,7 @@ return `<div class="arcade-beat page-enter"><div class="arcade-round"><strong>MO
 }
 
 function caseResult(entry,run){
-const result=chainResult(entry,run.path,game.seed),win=run.delta>=0,next=playableCases(game)[0];
+const result=visibleResult(entry,run),win=run.delta>=0,next=playableCases(game)[0];
 return `<div class="arcade-result ${win?"gain":"loss"} page-enter"><div class="arcade-result-label">★ MISSION COMPLETE ★</div><div class="arcade-confetti">${Array.from({length:17},(_,i)=>`<i style="--n:${i}"></i>`).join("")}</div><div class="arcade-medal">${win?"★":"↗"}</div><span>${esc(entry.title.toUpperCase())}</span><h1>${win?"NICE":"TOUGH"}<br><em>${win?"MOVE!":"CALL."}</em></h1>
 <div class="arcade-result-delta">${run.delta>=0?"+":"−"}<b class="count-value" data-target="${Math.abs(run.delta)}">${coins(Math.abs(run.delta))}</b><small> G</small></div><p class="arcade-result-desc">SIMULATED COINS ${win?"GAINED":"LOST"}</p>
 <div class="arcade-result-total"><small>NEW BALANCE</small><b>◉ ${coins(run.balanceAfter)} G</b></div>
@@ -227,7 +276,7 @@ function ledgerPage() {
     <div class="ledger-total"><span>AVAILABLE GAME CAPITAL</span><strong><span>◉</span> ${coins(game.balance)} <small>G</small></strong><p>Not money · not a crypto balance · not withdrawable</p></div>
     <div class="section-label"><h2>ALL ACTIVITY</h2><span class="tiny-index">${game.ledger.length} ENTRIES</span></div>
     <div class="ledger-list">${[...game.ledger].reverse().map((entry) => `<div class="ledger-item"><span class="ledger-icon ${entry.amount >= 0 ? "in" : "out"}">${entry.type === "welcome" ? "✳" : entry.type === "recovery" ? "↻" : "↗"}</span><div class="ledger-description"><strong>${esc(entry.label)}</strong><small>${dateText(entry.at)} · ${entry.type === "welcome" ? "STARTING CAPITAL" : entry.type === "recovery" ? "EDUCATIONAL REWARD" : "SIMULATED RESULT"}</small></div><div class="ledger-amount ${entry.amount >= 0 ? "in" : "out"}">${entry.amount >= 0 ? "+" : ""}${coins(entry.amount)} G<small>${coins(entry.balanceAfter)} AFTER</small></div></div>`).join("")}</div>
-    <div class="tip-panel">The prototype saves this ledger on your device. Before real multiplayer, balances and decisions must move to a verified, server-controlled ledger.</div>
+    <div class="tip-panel">${game.remote ? "Your virtual rewards are saved in your authenticated player ledger." : "This is only a local demo ledger. No verified account balance is changed."}</div>
   </div>`;
 }
 
@@ -296,7 +345,7 @@ function preloadImage(base) {
   if (!base || story.preloaded.has(base)) return;
   const img = new Image();
   img.decoding = "async";
-  img.src = base + ".webp";
+  img.src = base + "." + storyAssetExt(base);
   story.preloaded.set(base, img);
 }
 
@@ -315,7 +364,7 @@ function storyShot(entry) {
   const base = { balance: game.balance };
 
   if (stage === "result" && run) {
-    const result = chainResult(entry, run.path, game.seed);
+    const result = visibleResult(entry, run);
     const direction = sceneDirection(entry.id, "result", { band: result.band });
     const scene = narrativeScene(entry.id, "result", { band: result.band });
     return { ...base, key: `${entry.id}:result`, phase: "result", direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
@@ -325,7 +374,7 @@ function storyShot(entry) {
   }
   if (stage === "beat" && draftOpen && game.draft.path.length) {
     const made = game.draft.path.length;
-    const step = stageView(entry, game.draft.path, game.seed);
+    const step = visibleStage(entry);
     const direction = sceneDirection(entry.id, "consequence", { round: made - 1 });
     const emotion = reactionFor(entry.id, step.opening);
     const effect = emotion === "worried" ? "impact" : emotion === "celebrating" ? "glow" : emotion === "talking" ? "none" : "dim";
@@ -334,7 +383,7 @@ function storyShot(entry) {
       label: `${entry.title}: consequence of move ${made}`, ribbon: `MISSION ${entry.number} · THE FALLOUT`, progress: { label: `MOVE ${made} LOCKED`, total, done: made, current: -1 } };
   }
   if (stage === "decide" && draftOpen) {
-    const step = stageView(entry, game.draft.path, game.seed);
+    const step = visibleStage(entry);
     const direction = sceneDirection(entry.id, "decision", { round: step.index });
     const scene = narrativeScene(entry.id, "decision", { round: step.index });
     return { ...base, key: `${entry.id}:decide:${step.index}`, phase: "decision", direction, speaker: scene.speaker, emotion: direction.emotion, effect: "none",
@@ -344,7 +393,7 @@ function storyShot(entry) {
   const direction = sceneDirection(entry.id, "intro");
   const scene = narrativeScene(entry.id, "intro");
   return { ...base, key: `${entry.id}:intro`, phase: "intro", direction, speaker: scene.speaker, emotion: direction.emotion, effect: "none",
-    lines: [scene.line, entry.story], panel: introPanel(entry, evidenceFor(entry, game.seed)),
+    lines: [scene.line, entry.story], panel: introPanel(entry, visibleEvidence(entry)),
     label: `${entry.title}: mission brief`, ribbon: ribbon(direction), progress: { label: `MISSION ${entry.number} · BRIEFING`, total, done: 0, current: -1 } };
 }
 
@@ -437,18 +486,26 @@ function skipStory() {
 }
 
 // Applies a decision through the existing game core, unchanged from the classic flow.
-function commitChoice(id) {
+async function commitChoice(id) {
   try {
     const current = getCase();
-    game = chooseStep(game, caseId, id);
-    if (game.draft.path.length === current.stages.length) {
-      game = completeChain(game, caseId);
-      stage = "result";
-      countPending = true;
-      try { tg?.HapticFeedback?.notificationOccurred(game.played.at(-1).delta >= 0 ? "success" : "warning"); } catch {}
-    } else stage = "beat";
-    persist(); render(); if (!story.active) window.scrollTo({ top: 0, behavior: "smooth" });
-  } catch (error) { showToast(error.message); }
+    if (game.remote) {
+      game = await remoteCommand("choose",{caseId,choiceId:id});
+      if (game.played.some(run=>run.caseId===caseId)) {
+        stage="result";countPending=true;
+        try {tg?.HapticFeedback?.notificationOccurred(game.played.at(-1).delta>=0?"success":"warning");}catch{}
+      } else stage="beat";
+    } else {
+      game = chooseStep(game, caseId, id);
+      if (game.draft.path.length === current.stages.length) {
+        game = completeChain(game, caseId);
+        stage = "result";countPending=true;
+        try { tg?.HapticFeedback?.notificationOccurred(game.played.at(-1).delta >= 0 ? "success" : "warning"); } catch {}
+      } else stage = "beat";
+      persist();
+    }
+    render(); if (!story.active) window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (error) { showToast(error.message); if(game.remote)await resyncRemote(); }
   finally { moveBusy = false; }
 }
 
@@ -464,12 +521,20 @@ function chooseInStory(button) {
   story.el?.classList.add("has-choice");
   haptic("medium");
   // The last move settles the chain: warm up only the one result scene the player will see.
-  if (game.draft.path.length === entry.stages.length - 1) {
+  if (!game.remote && game.draft.path.length === entry.stages.length - 1) {
     try { preloadShot(entry.id, "result", { band: chainResult(entry, [...game.draft.path, id], game.seed).band }); } catch { /* preload is optional */ }
   }
 }
 
 function render(options = {}) {
+  if(remoteRequested && remoteStatus!=='ready'){
+    leaveStory();
+    const msg=remoteStatus==='connecting'
+      ? 'Verifying your Telegram account and retrieving your progress.'
+      : 'Secure sign-in is unavailable. Your virtual coins have not changed.';
+    root.innerHTML='<main class="app-shell"><div class="app-inner"><section class="arcade-flow page-enter" style="padding:28px 18px"><h1 class="arcade-title">GWAPOHOLICS.</h1><p class="arcade-hook">'+msg+'</p><button class="arcade-button" data-action="auth-retry">RETRY SECURE SIGN-IN →</button><p class="arcade-fine">For local playtesting only use ?demo=1. Demo coins do not become live account coins.</p></section></div></main>';
+    return;
+  }
   if (!canPlay) { leaveStory(); root.innerHTML = `<main class="app-shell"><div class="app-inner">${gatePage()}</div></main>`; return; }
   if (storyEligible()) { renderStory(); return; }
   leaveStory();
@@ -488,15 +553,16 @@ function render(options = {}) {
       : stage === "beat" && game.draft?.caseId === entry.id ? beatPage(entry)
       : caseBrief(entry);
   }
-  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> PLAYTEST · LOCAL-ONLY COINS · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
+  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> ${game.remote ? "VERIFIED TELEGRAM PLAYER · VIRTUAL COINS" : "PLAYTEST · LOCAL-ONLY COINS"} · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
   backButton();
   if (countPending) { countPending = false; countUp(); }
 }
 
-root.addEventListener("click", (event) => {
+root.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button || button.disabled) return;
   const { action } = button.dataset;
+  if (action === "auth-retry") { if(remoteRequested)authenticatePlayer(); return; }
   if (action === "story-hurry") { hurryStory(); return; }
   if (action === "story-skip") { skipStory(); return; }
   if (action === "story-exit") { changeView("home"); return; }
@@ -516,7 +582,7 @@ root.addEventListener("click", (event) => {
   if (action === "nav") { changeView(button.dataset.view); return; }
   if (action === "open-case") { openCase(button.dataset.case); return; }
   if (action === "decide") {
-    try { game = startCase(game, caseId); persist(); stage = "decide"; selectedChoice = null; haptic(); render(); }
+    try { if(game.remote) game=await remoteCommand("start",{caseId}); else {game=startCase(game,caseId);persist();} stage = "decide"; selectedChoice = null; haptic(); render(); }
     catch (error) { showToast(error.message); }
     return;
   }
@@ -536,14 +602,18 @@ root.addEventListener("click", (event) => {
     if (!selectedChoice || !caseId) return;
     try {
       const entry = getCase();
-      game = chooseStep(game, caseId, selectedChoice);
-      selectedChoice = null;
-      if (game.draft.path.length === entry.stages.length) {
-        game = completeChain(game, caseId);
-        stage = "result";
-        countPending = true;
+      if(game.remote){
+        game=await remoteCommand("choose",{caseId,choiceId:selectedChoice});
+        if(game.played.some(run=>run.caseId===caseId)){stage="result";countPending=true;}
+        else stage="beat";
+      }else{
+        game = chooseStep(game, caseId, selectedChoice);
+        if (game.draft.path.length === entry.stages.length) {
+          game = completeChain(game, caseId);stage="result";countPending=true;
+        }
+        persist();
       }
-      persist();
+      selectedChoice=null;
       haptic("medium");
       render();
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -559,14 +629,14 @@ root.addEventListener("click", (event) => {
   }
 });
 
-root.addEventListener("submit", (event) => {
+root.addEventListener("submit", async (event) => {
   if (event.target.id !== "recovery-form") return;
   event.preventDefault();
   const data = new FormData(event.target);
   const answers = RECOVERY_QUESTIONS.map((_, i) => data.get(`q${i}`) === null ? -1 : Number(data.get(`q${i}`)));
   try {
-    game = completeRecovery(game, answers);
-    persist();
+    if(game.remote)game=await remoteCommand("recover",{answers});
+    else {game=completeRecovery(game,answers);persist();}
     haptic("medium");
     if (isLocked(game)) showToast(`+${RECOVERY_REWARD} G earned. You're still below ${MIN_PLAY_BALANCE} G; return after your cooldown.`);
     else showToast(`+${RECOVERY_REWARD} G earned. You're back in the game!`);
@@ -614,4 +684,5 @@ root.addEventListener("error", (event) => {
 }, true);
 
 setupTelegram();
-render();
+if(remoteRequested)authenticatePlayer();
+else render();
