@@ -81,7 +81,7 @@ test('authenticated player uses server authority for all four moves and resumes 
   }
   await page.locator('.story-stage.phase-result').waitFor();
   const resultPanel=await page.locator('.story-stage.phase-result .stage-panel').innerText();
-  assert.ok(resultPanel.includes(String(game.balance)),
+  assert.ok(resultPanel.replaceAll(',','').includes(String(game.balance)),
     'cinematic result must display the confirmed server balance');
   assert.equal(game.played.length,1);
   assert.equal(game.ledger.filter(x=>x.type==='case').length,1);
