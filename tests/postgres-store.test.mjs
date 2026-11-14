@@ -36,6 +36,24 @@ test('Postgres adapter rolls back a failed command before releasing',async()=>{
  assert.ok(!seen.includes('COMMIT'));
  assert.equal(seen.at(-1),'released');
 });
+test('durable per-player throttle rolls back transactions above 30 writes per minute',async()=>{
+ const seen=[];
+ const pool={async connect(){return{
+  async query(sql){
+   seen.push(sql);
+   if(sql.startsWith('SELECT count(*)::int AS count FROM command_receipts'))return {rows:[{count:30}]};
+   return {rows:[]};
+  },
+  release(){seen.push('released')}
+ }}};
+ await assert.rejects(
+  ()=>createPostgresStore(pool).transaction('1234',tx=>tx.setReceipt('blocked',{ok:true},'a'.repeat(64))),
+  /Command rate limit exceeded/
+ );
+ assert.ok(seen.includes('ROLLBACK'));
+ assert.ok(!seen.some(sql=>sql.startsWith('INSERT INTO command_receipts')));
+ assert.equal(seen.at(-1),'released');
+});
 test('Rejects invalid player IDs before opening a connection',async()=>{
  const pool={connect(){throw Error('should not connect')}};
  await assert.rejects(()=>createPostgresStore(pool).transaction('not-id',()=>{}),/Invalid player ID/);
