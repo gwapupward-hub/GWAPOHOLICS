@@ -79,6 +79,15 @@ export function createPostgresStore(pool){
       return r.rows[0].response;
      },
      async setReceipt(id,response,requestHash){
+      // Durable per-user throttle shared by all Vercel instances. The advisory
+      // transaction lock above prevents two requests from evading this count.
+      // A replayed command is returned by getReceipt before reaching this gate.
+      const budget=await client.query(
+       "SELECT count(*)::int AS count FROM command_receipts "+
+       "WHERE telegram_user_id=$1 AND created_at > now() - interval '60 seconds'",
+       [uid]
+      );
+      if(Number(budget.rows[0]?.count||0)>=30)throw new Error('Command rate limit exceeded');
       await client.query(
        'INSERT INTO command_receipts (telegram_user_id,idempotency_key,command_hash,response) '+
        'VALUES ($1,$2,$3,$4::jsonb)',
