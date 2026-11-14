@@ -1,63 +1,59 @@
 # GWAPOHOLICS v1 — Release-Readiness Runbook
 
-**Status:** Preview release candidate, NOT public v1. Do not merge to main, promote a production deployment, or reconfigure @GwapoholicsBot without the owner's separate release approval.
+**Status:** Fully implemented v1 private-beta candidate in Preview; NOT a public release. The official `@GwapoholicsBot`, the production domain, and `main` remain unchanged. Production promotion requires separate explicit founder approval.
 
-## Delivered in source
-- 5 complete cinematic quests (45 distinct scene backgrounds) with layered props and typed character dialogue.
-- Playable browser demo with simulated nontransferable G coins.
-- Telegram HMAC validation, signed HttpOnly strict sessions, same-origin and CSRF safeguards.
-- Server-authoritative missions and recovery; player-specific PostgreSQL transactions and idempotency.
-- No client-submitted seed, balance, settlement band, or payoff accepted.
-- Automated five-quest playthrough, phone-size Chromium/WebKit, and mocked authenticated Telegram flow.
+## v1 release scope — frozen
+- Five cinematic business quests, 45 illustrated scenes, full-screen narration, staged props, tap-to-complete typing and reduced-motion support.
+- Telegram-native signed identity; session cookies with HttpOnly, Secure and SameSite=Strict.
+- One thousand nontransferable virtual G coins at registration. Business decision rewards/losses, 100-coin lockout, cooldown-limited educational recovery and cross-device resume.
+- Persistent Postgres player profile, completed quest runs, virtual ledger and idempotent command receipts.
+- No Solana token, cash-out, wallet connection, DEX swapping or real-money rewards in v1.
 
-## Gate 1 — GitHub owner action (still required)
-Open https://github.com/gwapupward-hub/GWAPOHOLICS/settings/rules and create an enforced branch ruleset targeting `main`.
+## Gate 1 — GitHub protections: VERIFIED
+Active ruleset [GWAPOHOLICS Main Protection](https://github.com/gwapupward-hub/GWAPOHOLICS/rules/27241887) targets the default branch. It blocks force pushes and deletion, requires PRs, and requires current `baseline`, `mobile-engines` and `postgres-ledger` checks. No bypass actors are configured. No positive reviewer count is required; keep separate founder release approval mandatory.
 
-Configure:
-- Require pull request before merge with review.
-- Require passing **baseline** and **mobile-engines** CI checks before merge.
-- Block force pushes and deletion.
-- Limit bypass users.
-- Verify the ruleset is actually active; a written policy in the repo is not sufficient.
+## Gate 2 — Isolated Preview database and authenticated server: VERIFIED
+Dedicated Neon project `gwapoholics-v1-preview` (`square-mode-74279855`) and Vercel Preview branch `preview/feat/v1-private-beta-release-candidate` exist. The four public tables (`players`, `quest_runs`, `command_receipts`, `virtual_ledger`) have been migrated. Preview-only `TELEGRAM_BOT_TOKEN`, `GWAP_SESSION_SECRET` and Neon-provided database settings are configured for `feat/v1-private-beta-release-candidate`. Never paste tokens or URLs containing database credentials into Git or chat.
 
-The connected GitHub App does not expose administration permission to set this rule directly. Issue #6 tracks completion.
+The test bot is `@TestGwap_bot`. Launch the Preview in Telegram **without** `?demo=1`. Browser demo is deliberately independent and cannot mutate authenticated balances.
 
-## Gate 2 — Vercel + isolated Neon (still required)
-Open https://vercel.com/bigdaddygwaps-projects/gwap-telegram-business-sim and create a **new** GWAPOHOLICS Preview Postgres database through Storage / Marketplace → Neon. Do not select, clone, or overwrite any existing GWAP database.
+The authenticated Streaming Pivot has been played end to end, resulting in 1,230 G (+230 exactly once, without duplicate settlements). This is one test result, not proof that every device or quest has been manually exercised.
 
-Direct Neon API project creation is blocked by the Vercel-managed organization. The owner must provision the new database through Vercel's integration flow.
+### Server safeguards
+- Verify raw Telegram `initData` HMAC and freshness on the server.
+- Signed, one-hour, HttpOnly sessions; existing sessions can be honored during signing-key rotation with optional `GWAP_SESSION_SECRET_PREVIOUS` for at most their remaining one-hour lifetime.
+- Same-origin and custom-header check on all mutations; no client-supplied balance, seed, result band or settlement value.
+- Atomic Postgres per-player locks, database unique settlement index, and persisted idempotency receipts.
+- **30 new game commands/player/rolling 60 seconds**, enforced in PostgreSQL across instances. Exact retries return their prior receipt without consuming a new command; over-limit commands return `429` with `Retry-After: 60`. This is an application command budget, **not a substitute for ingress IP rate limiting**.
 
-- Keep the database connected to **Preview only**, region US East if available.
-- Review the project-provided `DATABASE_URL` credentials without copying them into Git or chat.
-- Apply `server/sql/001_initial.sql` only to that empty database after review.
-- Set **Preview-only** Vercel secrets `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, and `GWAP_SESSION_SECRET` (at least 32 unpredictable bytes). Never use `NEXT_PUBLIC_` or `VITE_` prefixes.
-- Set session secret independently of the Telegram bot token.
-- Verify network/TLS and row locks; run `npm run db:check` from a trusted environment with the Preview connection available.
-- Add operational backup, rotation and restoration checks. Never paste a connection string or bot token into a GitHub issue.
+### Automated verification
+- `npm run check` and `npm test` for syntax, game logic, authentication, security and API responses.
+- `mobile-engines` GitHub check for Chromium/WebKit responsive input.
+- `postgres-ledger` GitHub check for actual disposable Postgres concurrency, idempotency, cross-instance restore, throttling and settlements across all five quests.
+- `npm run db:check` is read-only and should run only from a trusted environment with the isolated Preview connection.
 
-Issue #9 tracks database provisioning and API activation.
+## Gate 3 — Real Telegram WebView acceptance: OPEN
+On physical iPhone **and** Android phones, launch `@TestGwap_bot` into the authenticated Preview. Record device class and pass/fail, without copying Telegram `initData` or personal identifiers.
 
-## Gate 3 — Private test bot and device validation (still required)
-Use a private Telegram test bot / test launch link connected to the Preview deployment; leave production @GwapoholicsBot unchanged.
+1. Complete all five missions, four decisions each. Confirm every intro, decision scene and ending band displays, including smaller screens.
+2. Confirm typewriter tap-to-complete, staged prop order, fades, camera zoom and reduced-motion preference. Controls must remain visible above Telegram safe areas.
+3. Force-stop/reopen Telegram and reload midway through each quest; confirm server resume and identical coin balance across two devices on the same Telegram account.
+4. Retry an already-committed final decision, simulate a failed network response, and send simultaneous final commands: only one settlement.
+5. Validate 100-coin lockout, cooldown-limited recovery, no free repeated mint, and poor-network errors.
+6. Confirm secure signup/logout, session expiry and key-rotation behavior, no exposure of protected data, and no real-coin/withdrawal claims.
 
-On a real iPhone and Android Telegram WebView:
-- Start the Mini App and verify user identity is confirmed by the server.
-- Complete four decisions per quest for all five quests; verify all 4 result bands across controlled test accounts.
-- Reload midmission, close/reopen Telegram, switch devices under one Telegram user, and confirm the same trusted balance.
-- Repeat final choice concurrently, reload after failed network, replay completed quest, and verify exactly one settlement.
-- Test 100 G lockout and cooldown-limited education recovery.
-- Test reduced motion, typing skip, safe-area controls, poor cellular network, and image fallback.
-- Record onboarding friction, performance and critical errors, without raw initData or personally identifying information.
+## Gate 4 — Operational security: PARTIAL; BACKUP BLOCKER
+The app has secure cookies, Postgres idempotency and distributed per-player write throttling. **Ingress/IP throttling for `/api/session` still requires WAF or equivalent configuration** before public launch.
 
-## Gate 4 — Private beta (not started)
-Proposed 10–15 volunteer testers after Gates 1–3 pass. Do not invite players against a browser-only or unprotected ledger.
+Neon snapshot APIs refused both scheduling on this project and snapshotting the non-root Preview branch. **No automatic Preview backup is verified.** Before inviting a cohort, use an explicitly approved, secured Postgres logical backup process, validate restoration in an isolated disposable database, define retention and test recovery. Keep backups and export files out of Git and public logs. Configure secret-rotation ownership, monitoring and incident response before release.
 
-Acceptance: no critical auth/data-loss/duplicate-settlement issue, no missing art, successful cross-device restore; collect basic completion and return rates. See issue #8.
+To rotate the session signing key: set the prior key as `GWAP_SESSION_SECRET_PREVIOUS` only on the correct deployment environment; set an independently generated new `GWAP_SESSION_SECRET`; redeploy; allow one hour for previous cookies to expire; then remove the previous key and redeploy. Rotate the Telegram bot token separately through BotFather and replace the matching Vercel Preview secret without exposing it.
 
-## Gate 5 — Founder release approval (not granted)
-Produce a specific immutable commit SHA, staged **production** deployment with domains unassigned, test it using production configuration, then request explicit approval to promote it. Bot settings and `gwapoholics.ton` changes require separate confirmation. Stage beta and public release separately.
+## Gate 5 — Private beta: NOT STARTED
+After Gates 3–4 pass, invite 10–15 consenting testers on iOS and Android. Collect minimal metrics (first-choice time, quest completion, interrupted sessions and return use). Record issues without raw Telegram credentials. Exit requires zero unresolved critical auth, duplicate-settlement, integrity, data-loss or accessibility defects.
 
-The existing `vercel.json` prevents automatic `main` deployments after its rule becomes effective, but it is not a substitute for branch protection or explicit deployment approval.
+## Gate 6 — Public release: NOT AUTHORIZED
+Freeze a specific tested Git commit SHA. Verify all three required CI checks, staged production build and separate production database configuration. Obtain explicit founder approval before merging `main`, promoting a Vercel production deployment, changing `@GwapoholicsBot` or wiring `gwapoholics.ton`. Preview readiness alone does not authorize release.
 
-## V2
-Capture the founder's new ideas in an independent v2 backlog after v1 meets the gates. Do not introduce transferable or withdrawable tokens until token economy, compliance and security are separately approved.
+## V2 parking lot
+User-submitted ideas, multiplayer commerce, Solana token issuance and withdrawals stay outside this release and require separate security, tokenomics and legal review.
