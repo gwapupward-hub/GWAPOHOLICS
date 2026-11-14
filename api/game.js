@@ -13,7 +13,7 @@ export default async function handler(req,res){
   }
   try{
     const store=await getPostgresStore();
-    return await handleGame(req,res,{sessionSecret:process.env.GWAP_SESSION_SECRET,store});
+    return await handleGame(req,res,{sessionSecret:process.env.GWAP_SESSION_SECRET,previousSessionSecret:process.env.GWAP_SESSION_SECRET_PREVIOUS,store});
   }catch{
     // Never leak the database hostname, credentials, or query text.
     if(!res.headersSent)unavailable(res);
