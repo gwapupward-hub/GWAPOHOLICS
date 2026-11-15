@@ -21,7 +21,9 @@ if(process.env.GWAP_INCIDENT_DRILL_CONFIRM!=='PREVIEW_GITHUB_ONLY'){
     if(!Number.isSafeInteger(opened.issueNumber)||opened.issueNumber<1){
       throw new Error('Drill issue creation was not confirmed');
     }
-    const closed=await syncPreviewIncident({...options,state:'success'});
+    // Resolve the issue by its canonical ID, not the eventually consistent
+    // GitHub open-issues list immediately after creation.
+    const closed=await syncPreviewIncident({...options,state:'success',issueNumber:opened.issueNumber});
     if(closed.action!=='closed'||closed.issueNumber!==opened.issueNumber){
       throw new Error('Drill issue closure was not confirmed');
     }
