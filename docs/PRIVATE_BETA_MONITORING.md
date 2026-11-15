@@ -24,6 +24,14 @@ A **manual** GitHub Actions dispatch can optionally enable `incident_drill: true
 
 The drill does **not** run on its normal twice-hourly schedule; `incident_drill` defaults to false. It should be enabled only during an intentional manual dispatch after its PR is merged. This gives direct evidence of the Actions token's issue-create, assignment, comment, and closure permissions, while preserving the genuine incident state. Owner notification delivery for this exact workflow should still be confirmed separately if required.
 
+## First live drill evidence and race fix (2026-11-15)
+
+- Run [43695747157](https://github.com/gwapupward-hub/GWAPOHOLICS/actions/runs/43695747157) passed the three health checks, created and assigned [test issue #24](https://github.com/gwapupward-hub/GWAPOHOLICS/issues/24), but the drill step failed with `Drill issue closure was not confirmed`.
+- Run [43695959420](https://github.com/gwapupward-hub/GWAPOHOLICS/actions/runs/43695959420) passed, posted a recovery comment and closed #24.
+- The first run's direct create succeeded, but its immediate second query to the open-issues list did not confirm closure. This is consistent with a read-after-write visibility race, although the precise backend cause is not independently established.
+- The drill now passes the issue number returned by create directly to its recovery call. The recovery call fetches that exact issue, verifies the expected **DRILL** title and open state, and only then comments and closes it. The normal live-monitoring issue-list behavior remains unchanged. Unit tests reproduce a stale open-issues list and verify the direct recovery and identity guard.
+- This fix needs a new successful controlled manual drill after merge to be considered verified end-to-end. The previous two-run recovery is verified; the one-run fix is not yet deployed.
+
 ## Operational response
 
 - Assign a repository maintainer to the issue stream and explicitly subscribe to GitHub Actions / Issue notifications. Issue creation is not a verified SMS, email or on-call paging system.
