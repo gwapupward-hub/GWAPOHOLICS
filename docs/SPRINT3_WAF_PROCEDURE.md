@@ -1,6 +1,6 @@
 # Sprint 3 — Preview ingress verification
 
-This test is **not yet executed**. The script is intentionally opt-in and bounded to 22 requests, with no Telegram credentials. It must be run only after checking the URL is a Preview deployment in Vercel (a `.vercel.app` hostname alone does not prove Preview).
+A controlled, equivalent 21-request live Preview probe **was executed on 2026-11-15**, observing 20 HTTP 403s followed by HTTP 429. See `docs/PREVIEW_OPERATIONS_EVIDENCE.md`. The committed script itself has not been independently run from this environment. The script is intentionally opt-in and bounded to 22 requests, with no Telegram credentials. It must be run only after checking the URL is a Preview deployment in Vercel (a `.vercel.app` hostname alone does not prove Preview).
 
 ## Operator procedure
 1. In Vercel, verify the exact deployment is `target: null` (Preview), and its linked project is `gwap-telegram-business-sim`. Check the deployment SHA and URL.
