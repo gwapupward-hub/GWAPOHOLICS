@@ -19,8 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      # Approved, pinned Preview deployment. Do NOT substitute production.
-      GWAP_PREVIEW_URL: https://gwap-telegram-business-r8brisqm4-bigdaddygwaps-projects.vercel.app
+      # Verified Preview-only release-candidate branch alias. Do NOT substitute production.
+      GWAP_PREVIEW_URL: https://gwap-telegram-business-sim-git-fe-c57750-bigdaddygwaps-projects.vercel.app
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
