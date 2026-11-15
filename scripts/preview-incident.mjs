@@ -7,10 +7,12 @@ export const PREVIEW_INCIDENT_TITLE='[GWAPOHOLICS Preview] Endpoint monitor fail
 export const PREVIEW_INCIDENT_DRILL_TITLE='[GWAPOHOLICS Preview] DRILL: issue notification lifecycle';
 
 export async function syncPreviewIncident({
-  state,repository,runId,token,assignee,title=PREVIEW_INCIDENT_TITLE,fetchImpl=fetch
+  state,repository,runId,token,assignee,title=PREVIEW_INCIDENT_TITLE,issueNumber=null,fetchImpl=fetch
 }={}){
   if(!['success','failure'].includes(state)||
       ![PREVIEW_INCIDENT_TITLE,PREVIEW_INCIDENT_DRILL_TITLE].includes(title)||
+      (issueNumber!==null && (title!==PREVIEW_INCIDENT_DRILL_TITLE || state!=='success' ||
+        !Number.isSafeInteger(issueNumber) || issueNumber<1))||
       typeof repository!=='string'|| !/^[\w.-]+\/[\w.-]+$/.test(repository)||
       !/^\d+$/.test(String(runId??''))||
       typeof token!=='string'||!token||
@@ -33,9 +35,20 @@ export async function syncPreviewIncident({
     if(!response.ok)throw new Error('GitHub issues API HTTP '+response.status);
     return response.json();
   }
-  const issues=await request('/issues?state=open&per_page=100');
-  if(!Array.isArray(issues))throw new Error('Invalid GitHub issues response');
-  const current=issues.find(issue=>!issue.pull_request&&issue.title===title);
+  let current;
+  if(issueNumber!==null){
+    // Immediately after a create, GitHub's open-issue list can lag behind the
+    // canonical issue URL. Read the exact issue to avoid eventually consistent listing.
+    current=await request('/issues/'+issueNumber);
+    if(current?.number!==issueNumber || current.title!==title ||
+       current.pull_request || current.state!=='open'){
+      throw new Error('Drill issue identity or open state not verified');
+    }
+  }else{
+    const issues=await request('/issues?state=open&per_page=100');
+    if(!Array.isArray(issues))throw new Error('Invalid GitHub issues response');
+    current=issues.find(issue=>!issue.pull_request&&issue.title===title);
+  }
   if(state==='failure'){
     if(!current){
       const created=await request('/issues','POST',{

@@ -139,3 +139,55 @@ test('invalid issue title is rejected so drills cannot target unrelated incident
   }}),/Invalid Preview incident configuration/);
   assert.equal(hits,0);
 });
+
+test('fresh drill issue closes by canonical ID even when open-issues listing is stale',async()=>{
+  const calls=[];
+  const fetchImpl=async(url,opts)=>{
+    const path=url.replace('https://api.github.com/repos/gwapupward-hub/GWAPOHOLICS','');
+    calls.push({path,method:opts.method,body:opts.body&&JSON.parse(opts.body)});
+    if(path==='/issues?state=open&per_page=100')return json([]); // stale even after POST
+    if(path==='/issues'&&opts.method==='POST')return json({number:73},201);
+    if(path==='/issues/73'&&opts.method==='GET')
+      return json({number:73,title:PREVIEW_INCIDENT_DRILL_TITLE,state:'open',assignees:[{login:'gwapupward-hub'}]});
+    if(path==='/issues/73/comments'&&opts.method==='POST')return json({id:11},201);
+    if(path==='/issues/73'&&opts.method==='PATCH')return json({number:73,state:'closed'});
+    throw Error('unexpected path '+path);
+  };
+  const shared={...defaults,title:PREVIEW_INCIDENT_DRILL_TITLE,fetchImpl};
+  const first=await syncPreviewIncident({...shared,state:'failure'});
+  assert.deepEqual(first,{action:'opened',issueNumber:73});
+  const second=await syncPreviewIncident({...shared,state:'success',issueNumber:first.issueNumber});
+  assert.deepEqual(second,{action:'closed',issueNumber:73});
+  assert.deepEqual(calls.map(x=>[x.method,x.path]),[
+    ['GET','/issues?state=open&per_page=100'],
+    ['POST','/issues'],
+    ['GET','/issues/73'],
+    ['POST','/issues/73/comments'],
+    ['PATCH','/issues/73']
+  ]);
+});
+
+test('direct drill issue validation refuses to close an unrelated issue',async()=>{
+  let writes=0;
+  const fetchImpl=async(url,opts)=>{
+    if(opts.method!=='GET'){writes++;return json({})}
+    return json({number:73,title:PREVIEW_INCIDENT_TITLE,state:'open'});
+  };
+  await assert.rejects(syncPreviewIncident({...defaults,state:'success',
+    title:PREVIEW_INCIDENT_DRILL_TITLE,issueNumber:73,fetchImpl}),/Drill issue identity or open state not verified/);
+  assert.equal(writes,0);
+});
+
+test('canonical issue-ID recovery is never permitted for real incidents or failure actions',async()=>{
+  for(const options of [
+    {title:PREVIEW_INCIDENT_TITLE,state:'success',issueNumber:73},
+    {title:PREVIEW_INCIDENT_DRILL_TITLE,state:'failure',issueNumber:73},
+    {title:PREVIEW_INCIDENT_DRILL_TITLE,state:'success',issueNumber:-1}
+  ]){
+    let requests=0;
+    await assert.rejects(syncPreviewIncident({...defaults,...options,fetchImpl:async()=>{
+      requests++;return json([]);
+    }}),/Invalid Preview incident configuration/);
+    assert.equal(requests,0);
+  }
+});
