@@ -16,7 +16,13 @@ The alias was verified to point at deployment `dpl_3xuNUweQitt1mnFzGM3xymxnw9zh`
 
 All checks must return no `Set-Cookie`. No valid Telegram tokens, real identities, game commands, or database writes are used. A passing check is **not proof** of genuine Telegram login, gameplay authorization, database connectivity or SSL verification.
 
-The monitor retries once after three seconds. If both attempts fail, its GitHub Actions job fails and a script opens one GitHub issue titled **[GWAPOHOLICS Preview] Endpoint monitor failing**. If a matching open issue exists, it does not duplicate it. When tests pass, the script closes the issue after a recovery comment.
+The monitor retries once after three seconds. If both attempts fail, its GitHub Actions job fails and a script opens one GitHub issue titled **[GWAPOHOLICS Preview] Endpoint monitor failing**, explicitly assigned to the verified notification recipient `gwapupward-hub`. If a matching issue is already open, it does not duplicate it and ensures the owner is assigned. When tests pass, the script comments and closes the issue. These transitions have deterministic, credential-free unit tests; **the live failure-to-recovery workflow and owner notification on a real automatic incident have not yet been tested**.
+
+## Safe issue-lifecycle drill (after review and merge)
+
+A **manual** GitHub Actions dispatch can optionally enable `incident_drill: true`. It first runs the real credential-free health probes. If they pass, the workflow uses its `issues:write` token to create an issue clearly titled **[GWAPOHOLICS Preview] DRILL: issue notification lifecycle**, assigns `gwapupward-hub`, posts a test-only recovery comment, and closes that issue. It never creates a real failure alert or changes Preview/gameplay state. A drill failure leaves the workflow failed; inspect the labeled test issue and close it only after understanding the partial state.
+
+The drill does **not** run on its normal twice-hourly schedule; `incident_drill` defaults to false. It should be enabled only during an intentional manual dispatch after its PR is merged. This gives direct evidence of the Actions token's issue-create, assignment, comment, and closure permissions, while preserving the genuine incident state. Owner notification delivery for this exact workflow should still be confirmed separately if required.
 
 ## Operational response
 

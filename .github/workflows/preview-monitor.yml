@@ -5,6 +5,12 @@ on:
     # Twice per hour, UTC. Runs only from the default branch after merge.
     - cron: '17,47 * * * *'
   workflow_dispatch:
+    inputs:
+      incident_drill:
+        description: 'Optional controlled GitHub issue drill; never simulates a real outage'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -41,7 +47,17 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           MONITOR_STATE: ${{ steps.probe.outcome }}
+          GWAP_MONITOR_ASSIGNEE: gwapupward-hub
         run: node scripts/sync-preview-monitor-issue.mjs
+      - name: Controlled Preview incident issue drill
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.incident_drill && steps.probe.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          GWAP_MONITOR_ASSIGNEE: gwapupward-hub
+          GWAP_INCIDENT_DRILL_CONFIRM: PREVIEW_GITHUB_ONLY
+        run: node scripts/drill-preview-monitor-issue.mjs
       - name: Mark failing probe
         if: ${{ steps.probe.outcome != 'success' }}
         run: exit 1
