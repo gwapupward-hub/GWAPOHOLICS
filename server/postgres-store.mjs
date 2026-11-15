@@ -1,3 +1,4 @@
+import {normalizePostgresSslMode} from './postgres-tls.mjs';
 /**
  * PostgreSQL adapter for server-only game command service.
  * Database and schema are configured outside this repository.
@@ -111,7 +112,7 @@ export async function getPostgresStore(){
   liveStorePromise=(async()=>{
    const pg=await import('pg');
    const Pool=pg.Pool||pg.default?.Pool;
-   const pool=new Pool({connectionString:process.env.DATABASE_URL,max:4,connectionTimeoutMillis:5000,idleTimeoutMillis:15000,allowExitOnIdle:true});
+   const pool=new Pool({connectionString:normalizePostgresSslMode(process.env.DATABASE_URL),max:4,connectionTimeoutMillis:5000,idleTimeoutMillis:15000,allowExitOnIdle:true});
    return createPostgresStore(pool);
   })().catch(e=>{liveStorePromise=undefined;throw e});
  }
