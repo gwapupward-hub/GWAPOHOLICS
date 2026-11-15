@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PREVIEW_INCIDENT_TITLE,syncPreviewIncident} from '../scripts/preview-incident.mjs';
+import {PREVIEW_INCIDENT_TITLE,PREVIEW_INCIDENT_DRILL_TITLE,syncPreviewIncident} from '../scripts/preview-incident.mjs';
 
 const defaults={
   state:'failure',repository:'gwapupward-hub/GWAPOHOLICS',
@@ -96,4 +96,46 @@ test('missing assignee and invalid configuration prevent GitHub writes',async()=
     );
     assert.equal(count,0);
   }
+});
+
+test('controlled DRILL opens an assigned test-only issue and closes it without touching real incidents',async()=>{
+  let openIssue=null;
+  const calls=[];
+  const fetchImpl=async(url,request)=>{
+    const path=url.replace('https://api.github.com/repos/gwapupward-hub/GWAPOHOLICS','');
+    const body=request.body?JSON.parse(request.body):null;
+    calls.push({path,method:request.method,body});
+    if(path==='/issues?state=open&per_page=100')return json(openIssue?[openIssue]:[]);
+    if(path==='/issues'&&request.method==='POST'){
+      openIssue={number:72,title:body.title,assignees:body.assignees.map(login=>({login}))};
+      return json({number:72},201);
+    }
+    if(path==='/issues/72/comments'&&request.method==='POST')return json({id:9},201);
+    if(path==='/issues/72'&&request.method==='PATCH'){
+      openIssue=null;
+      return json({number:72,state:'closed'});
+    }
+    throw Error('Unexpected drill call: '+path);
+  };
+  const shared={...defaults,title:PREVIEW_INCIDENT_DRILL_TITLE,fetchImpl};
+  const opened=await syncPreviewIncident({...shared,state:'failure'});
+  assert.deepEqual(opened,{action:'opened',issueNumber:72});
+  assert.equal(calls[1].body.title,PREVIEW_INCIDENT_DRILL_TITLE);
+  assert.deepEqual(calls[1].body.assignees,['gwapupward-hub']);
+  assert.match(calls[1].body.body,/not a real Preview outage/i);
+  assert.doesNotMatch(calls[1].body.body,/failed twice/);
+  const closed=await syncPreviewIncident({...shared,state:'success'});
+  assert.deepEqual(closed,{action:'closed',issueNumber:72});
+  assert.equal(openIssue,null);
+  assert.equal(calls.filter(x=>x.path==='/issues'&&x.method==='POST').length,1);
+  assert.equal(calls.filter(x=>x.path==='/issues/72'&&x.method==='PATCH').length,1);
+});
+
+test('invalid issue title is rejected so drills cannot target unrelated incidents',async()=>{
+  let hits=0;
+  await assert.rejects(syncPreviewIncident({...defaults,title:'Customer outage',fetchImpl:async()=>{
+    hits++;
+    return json([]);
+  }}),/Invalid Preview incident configuration/);
+  assert.equal(hits,0);
 });
