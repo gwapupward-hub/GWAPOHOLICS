@@ -1,0 +1,47 @@
+name: GWAPOHOLICS Preview endpoint monitor
+
+on:
+  schedule:
+    # Twice per hour, UTC. Runs only from the default branch after merge.
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: gwapoholics-preview-monitor
+  cancel-in-progress: false
+
+jobs:
+  preview-auth-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      # Approved, pinned Preview deployment. Do NOT substitute production.
+      GWAP_PREVIEW_URL: https://gwap-telegram-business-r8brisqm4-bigdaddygwaps-projects.vercel.app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '22'
+      - name: Credential-free Preview auth boundary probe
+        id: probe
+        continue-on-error: true
+        run: node scripts/check-preview-auth.mjs
+      - name: Create or resolve single Preview issue
+        if: ${{ always() && steps.probe.outcome != 'skipped' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          MONITOR_STATE: ${{ steps.probe.outcome }}
+        run: node scripts/sync-preview-monitor-issue.mjs
+      - name: Mark failing probe
+        if: ${{ steps.probe.outcome != 'success' }}
+        run: exit 1
