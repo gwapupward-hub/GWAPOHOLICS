@@ -41,6 +41,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_RUN_ID: ${{ github.run_id }}
           MONITOR_STATE: ${{ steps.probe.outcome }}
+          GWAP_MONITOR_ASSIGNEE: gwapupward-hub
         run: node scripts/sync-preview-monitor-issue.mjs
       - name: Mark failing probe
         if: ${{ steps.probe.outcome != 'success' }}
