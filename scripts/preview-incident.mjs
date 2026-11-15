@@ -4,11 +4,13 @@
  * Invoke through sync-preview-monitor-issue.mjs after the HTTP probes finish.
  */
 export const PREVIEW_INCIDENT_TITLE='[GWAPOHOLICS Preview] Endpoint monitor failing';
+export const PREVIEW_INCIDENT_DRILL_TITLE='[GWAPOHOLICS Preview] DRILL: issue notification lifecycle';
 
 export async function syncPreviewIncident({
-  state,repository,runId,token,assignee,fetchImpl=fetch
+  state,repository,runId,token,assignee,title=PREVIEW_INCIDENT_TITLE,fetchImpl=fetch
 }={}){
   if(!['success','failure'].includes(state)||
+      ![PREVIEW_INCIDENT_TITLE,PREVIEW_INCIDENT_DRILL_TITLE].includes(title)||
       typeof repository!=='string'|| !/^[\w.-]+\/[\w.-]+$/.test(repository)||
       !/^\d+$/.test(String(runId??''))||
       typeof token!=='string'||!token||
@@ -33,12 +35,14 @@ export async function syncPreviewIncident({
   }
   const issues=await request('/issues?state=open&per_page=100');
   if(!Array.isArray(issues))throw new Error('Invalid GitHub issues response');
-  const current=issues.find(issue=>!issue.pull_request&&issue.title===PREVIEW_INCIDENT_TITLE);
+  const current=issues.find(issue=>!issue.pull_request&&issue.title===title);
   if(state==='failure'){
     if(!current){
       const created=await request('/issues','POST',{
-        title:PREVIEW_INCIDENT_TITLE,assignees:[assignee],
-        body:'The scheduled credential-free Preview endpoint monitor failed twice.\n\nRun: '+run+
+        title,assignees:[assignee],
+        body:(title===PREVIEW_INCIDENT_DRILL_TITLE?
+          'CONTROLLED DRILL — This test issue is not a real Preview outage.\n\nRun: '+run:
+          'The scheduled credential-free Preview endpoint monitor failed twice.\n\nRun: '+run)+
           '\n\nCheck Preview routing, expected HTTP 401/400/401 responses, and Vercel runtime logs. '+
           'This probe does NOT validate real Telegram sessions, database transactions or production. '+
           'Do not paste secrets into this issue.'
@@ -55,7 +59,7 @@ export async function syncPreviewIncident({
   }
   if(!current)return {action:'healthy',issueNumber:null};
   await request('/issues/'+current.number+'/comments','POST',{
-    body:'Credential-free Preview endpoints recovered. Passing run: '+run+
+    body:(title===PREVIEW_INCIDENT_DRILL_TITLE?'CONTROLLED DRILL completed. Run: ':'Credential-free Preview endpoints recovered. Passing run: ')+run+
       '\nAuthenticated gameplay and database readiness remain separate checks.'
   });
   await request('/issues/'+current.number,'PATCH',{state:'closed'});
