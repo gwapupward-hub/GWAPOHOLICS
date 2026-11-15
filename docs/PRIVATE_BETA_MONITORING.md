@@ -16,7 +16,7 @@ The alias was verified to point at deployment `dpl_3xuNUweQitt1mnFzGM3xymxnw9zh`
 
 All checks must return no `Set-Cookie`. No valid Telegram tokens, real identities, game commands, or database writes are used. A passing check is **not proof** of genuine Telegram login, gameplay authorization, database connectivity or SSL verification.
 
-The monitor retries once after three seconds. If both attempts fail, its GitHub Actions job fails and a script opens one GitHub issue titled **[GWAPOHOLICS Preview] Endpoint monitor failing**. If a matching open issue exists, it does not duplicate it. When tests pass, the script closes the issue after a recovery comment.
+The monitor retries once after three seconds. If both attempts fail, its GitHub Actions job fails and a script opens one GitHub issue titled **[GWAPOHOLICS Preview] Endpoint monitor failing**, explicitly assigned to the verified notification recipient `gwapupward-hub`. If a matching issue is already open, it does not duplicate it and ensures the owner is assigned. When tests pass, the script comments and closes the issue. These transitions have deterministic, credential-free unit tests; **the live failure-to-recovery workflow and owner notification on a real automatic incident have not yet been tested**.
 
 ## Operational response
 
