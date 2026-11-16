@@ -1,6 +1,6 @@
 # GWAPOHOLICS — Encrypted offsite Preview backups
 
-Status: **Prepared in PR only; not operational until the workflow is activated, a backup is uploaded, and a restore test passes.** Environment configuration has been reported by the owner but not independently validated. No production deployment is authorized.
+Status: **Encrypted Preview backup uploads operational; actual offsite restore NOT YET PROVEN.** GitHub Actions backup run [43721534545](https://github.com/gwapupward-hub/GWAPOHOLICS/actions/runs/43721534545) verified PostgreSQL 18 dump, age encryption, and archive plus SHA-256 upload. Two B2 objects with 30-day Object Lock have been owner-confirmed. A real independent B2 download → checksum → age decryption → empty Neon pg_restore test remains a **non-waivable public-production gate**. Use the [specific recovery acceptance example](B2_RESTORE_ACCEPTANCE_EXAMPLE.md). No production deployment is authorized.
 
 ## Destination
 - Provider: Backblaze B2 S3 API
