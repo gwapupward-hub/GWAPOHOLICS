@@ -19,7 +19,7 @@ function archiveInput(rowCounts) {
   return tables.map(name => [
     `COPY public.${name} (id) FROM stdin;`,
     ...Array.from({length: rowCounts[name]}, (_, i) => String(i+1)),
-    String.raw`\\.`
+    String.raw`\.`
   ].join('\n')).join('\n') + '\n';
 }
 
