@@ -98,7 +98,7 @@ printf 'Paste ONLY the disposable Neon database connection URL (input hidden): '
 stty -echo
 IFS= read -r RESTORE_TEST_DATABASE_URL
 stty echo
-printf '\\n'
+printf '\n'
 export RESTORE_TEST_DATABASE_URL
 ```
 
