@@ -35,6 +35,13 @@ jobs:
           done
           [[ "$AGE_RECIPIENT" == age1* ]] || { echo "::error::Invalid age recipient"; exit 1; }
           aws --version
+      - name: Checkout audited backup guardrails
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Fail closed unless source is the approved Preview endpoint
+        shell: bash
+        run: node scripts/verify-backup-source.mjs
       - name: Install age
         run: |
           sudo apt-get update -qq
@@ -49,8 +56,31 @@ jobs:
             --env DATABASE_URL \
             --mount "type=bind,src=$RUNNER_TEMP/gwap-backup,dst=/out" \
             postgres:18 \
-            bash -ec 'pg_dump --dbname="$DATABASE_URL" --format=custom --no-owner --no-acl --file=/out/preview.dump'
+            bash -euc '
+              source_db="$(psql "$DATABASE_URL" -At -v ON_ERROR_STOP=1 -c "SELECT current_database()")"
+              [[ "$source_db" == "neondb" ]] || { echo "::error::Wrong backup database"; exit 1; }
+              counts="$(psql "$DATABASE_URL" -At -F " " -v ON_ERROR_STOP=1 -c "SELECT (SELECT count(*) FROM public.players), (SELECT count(*) FROM public.quest_runs), (SELECT count(*) FROM public.virtual_ledger), (SELECT count(*) FROM public.command_receipts)")"
+              read -r players quests ledger receipts <<< "$counts"
+              for value in "$players" "$quests" "$ledger" "$receipts"; do
+                [[ "$value" =~ ^[0-9]+$ ]] || { echo "::error::Invalid game table count"; exit 1; }
+              done
+              if (( players < 1 || quests < 1 || ledger < 1 || receipts < 1 )); then
+                echo "::error::Preview backup source has empty game tables; refusing to upload an empty recovery archive."
+                exit 1
+              fi
+              echo "Verified populated Preview game tables; source checks passed."
+              pg_dump --dbname="$DATABASE_URL" --schema=public --format=custom --no-owner --no-acl --file=/out/preview.dump
+            '
           test -s "$RUNNER_TEMP/gwap-backup/preview.dump"
+      - name: Reject any archive lacking game COPY records
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm \
+            --mount "type=bind,src=$RUNNER_TEMP/gwap-backup,dst=/out,readonly" \
+            postgres:18 \
+            pg_restore --data-only --schema=public --file=- /out/preview.dump \
+            | node scripts/audit-backup-copy.mjs
       - name: Encrypt and upload immutable backup
         shell: bash
         run: |
