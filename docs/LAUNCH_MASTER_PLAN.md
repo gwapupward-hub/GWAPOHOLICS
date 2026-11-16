@@ -25,9 +25,9 @@
 
 | Topic | Current evidence | State | Gap/next proof |
 |---|---|---|---|
-| Gameplay v1 | 5 quests, 45 scenes, server-backed code and required checks; merged release-candidate PR #11 | Implemented | Full physical iPhone five-quest matrix |
+| Gameplay v1 | 5 quests, 45 scenes; founder reports entire `@TestGwap_bot` gameplay passed Nov 15 | Founder-reported PASS | Device/build metadata and specific fault-injection evidence still open |
 | Telegram signed authentication | `@TestGwap_bot` Preview integration; one authenticated Streaming Pivot settlement recorded (1,230 G) | Partly verified live | All-quest signed-user resume, expiry, reauth and database flows |
-| Economy integrity | Disposable PostgreSQL integration checks for concurrency/idempotence/cross-instance state | Verified in CI | Physical signed-user interrupted and recovery checks |
+| Economy integrity | CI plus read-only Preview aggregate: 5 distinct completed cases, 4 choices each, 0 duplicate user-case groups, 0 ledger-balance mismatch | Aggregate PASS | Physical signed-user interrupted/recovery/expiry testing |
 | GitHub release protection | Active main ruleset; required CI | Verified | Revalidate release SHA at staging |
 | WAF | Preview 20/IP/60s: HTTP 403 ×20 followed by HTTP 429 once | Verified bounded ingress response | Signed login after cooldown; attribution if available |
 | Preview backup | Encrypted Backblaze B2 backups and 30-day retention reported; scheduled workflow success | Backup verified, restore open | Isolated Neon restore + read-only integrity checks |
@@ -46,7 +46,7 @@ Evidence: [PR #11](https://github.com/gwapupward-hub/GWAPOHOLICS/pull/11), [Prev
 
 ### Sprint 1 — technical acceptance and release controls (P0; start here)
 
-- [ ] Physical iPhone in `@TestGwap_bot`, signed Preview: complete each of five quests, four decisions; verify art, narrator, small viewport, safe areas and reduced motion. Store deployment SHA, device/Telegram versions, timestamp and redacted evidence.
+- [x] Founder-reported full `@TestGwap_bot` five-quest gameplay pass (Nov 15, 2026); independent read-only Preview SQL confirms five distinct completed quests, four choices each, no duplicate user-case group and no latest-ledger balance mismatch. [ ] Separately capture device/build metadata and specified accessibility/failure scenarios.
 - [ ] Signed-user interruption/resume, network failure/retry, session expiry/logout, exactly-once settlement, low-balance lockout/cooldown and same-account continuity. Use disposable isolated data for destructive edge cases.
 - [ ] After rate-limit cooldown, verify legitimate signed launch, and reconcile WAF 429 evidence.
 - [ ] Confirm runtime TLS hostname verification and successful authenticated DB operation on currently deployed Preview; no secrets in logs or evidence.
@@ -113,4 +113,4 @@ Evidence: [PR #11](https://github.com/gwapupward-hub/GWAPOHOLICS/pull/11), [Prev
 
 For each gate: `id`, `phase`, `title`, `status` (unverified/in-progress/verified/blocked/deferred), `owner`, `evidence_url`, `last_checked_utc`, `blocker`, `unknowns`, `decision_required`, `next_smallest_action`, `approval_state`. Keep staging and production approvals separate.
 
-**Next smallest action, as of baseline:** Run the authenticated five-quest iPhone Telegram QA matrix from `@TestGwap_bot` and record exact pass/fail and redacted evidence; in parallel, schedule isolated restore acceptance and prepare (do not publish) official community assets.
+**Next smallest action, updated 2026-11-15:** Reconcile the exact bot-linked Preview deployment and live TLS/session behavior; then obtain an auditable encrypted B2 snapshot restore with checksum, decryption, isolated import, integrity checks and evidence. Founder gameplay and aggregate ledger checks are recorded as passed. Prepare (do not publish) community materials in parallel.
