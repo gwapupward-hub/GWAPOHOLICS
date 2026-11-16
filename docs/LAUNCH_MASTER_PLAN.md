@@ -33,9 +33,10 @@
 | Preview backup | Encrypted Backblaze B2 backups and 30-day retention reported; scheduled workflow success | Backup verified, restore open | Isolated Neon restore + read-only integrity checks |
 | Monitoring | Scheduled Preview endpoint probe and GitHub incident assignment; latest scheduled CI green | Operational baseline | Latest one-run incident drill and real notification ownership |
 | Database TLS | Compatibility fix merged and newer Preview built | Unconfirmed live query | Authenticated Postgres query and warning-free runtime verification |
-| Official bot and `.ton` | Bot/name provided by founder | Not released | BotFather configuration, authoritative TON DNS, HTTPS and staging smoke |
+| Official bot and `.ton` | Bot/name provided by founder | Not released | Verify test-bot entry URL; then BotFather configuration, authoritative TON DNS, HTTPS and staging smoke |
 | Private beta | Acceptance worksheet in repository | Not signed off | 10–15 testers, metrics, bugs, zero critical defects |
 | Production | Preview is available; separate production release gated | Not approved | Dedicated prod DB, secrets, release/rollback drill, founder sign-off |
+| Official brand asset | Existing `brand.svg` is 128px multicolor, not approved locked 512px one-path black silhouette | BLOCKED | Obtain exact master SVG; replace/favicon-test in reviewable PR; issue #32 |
 | Community/marketing | Strategy below | Not independently verified | Channel/group ownership, content assets, distribution and analytics |
 
 Evidence: [PR #11](https://github.com/gwapupward-hub/GWAPOHOLICS/pull/11), [Preview operations](PREVIEW_OPERATIONS_EVIDENCE.md), [Private beta acceptance](PRIVATE_BETA_ACCEPTANCE.md), [Preview monitor](PRIVATE_BETA_MONITORING.md), [Release runbook](V1_RELEASE_RUNBOOK.md), [GitHub Actions](https://github.com/gwapupward-hub/GWAPOHOLICS/actions).
@@ -52,7 +53,7 @@ Evidence: [PR #11](https://github.com/gwapupward-hub/GWAPOHOLICS/pull/11), [Prev
 - [ ] Confirm runtime TLS hostname verification and successful authenticated DB operation on currently deployed Preview; no secrets in logs or evidence.
 - [ ] Complete the isolated encrypted-backup restore drill to a disposable Neon target and validate restored tables, counts and ledger integrity, without production writes.
 - [ ] Verify current monitoring/incident-lifecycle drill and owner notification delivery; ensure escalation and rollback contacts have named owners.
-- [ ] Confirm verified TON owner/DNS, HTTPS host, official logo assets, bot metadata and release deployment architecture **without changing official settings yet**.
+- [ ] Confirm verified TON owner/DNS, HTTPS host, **restore exact approved single-path master SVG in app/favicon** (see [brand issue #32](https://github.com/gwapupward-hub/GWAPOHOLICS/issues/32)), bot metadata and release deployment architecture **without changing official settings yet**.
 - [ ] Record Android QA as deferred; no unsupported cross-platform claim.
 - [ ] Produce a sign-off packet listing pass/fail/evidence links, remaining blockers, unknowns, owner and next smallest action.
 
@@ -113,4 +114,4 @@ Evidence: [PR #11](https://github.com/gwapupward-hub/GWAPOHOLICS/pull/11), [Prev
 
 For each gate: `id`, `phase`, `title`, `status` (unverified/in-progress/verified/blocked/deferred), `owner`, `evidence_url`, `last_checked_utc`, `blocker`, `unknowns`, `decision_required`, `next_smallest_action`, `approval_state`. Keep staging and production approvals separate.
 
-**Next smallest action, updated 2026-11-15:** Reconcile the exact bot-linked Preview deployment and live TLS/session behavior; then obtain an auditable encrypted B2 snapshot restore with checksum, decryption, isolated import, integrity checks and evidence. Founder gameplay and aggregate ledger checks are recorded as passed. Prepare (do not publish) community materials in parallel.
+**Next smallest action, updated 2026-11-15:** Reconcile the exact test-bot-linked Preview deployment (recent runtime activity reached an older deployment) and live TLS/session behavior; then obtain an auditable encrypted B2 snapshot restore (see [issue #30](https://github.com/gwapupward-hub/GWAPOHOLICS/issues/30)). Founder gameplay and independent aggregate ledger checks are recorded as passed. Resolve the stale 128px multicolor primary asset using the **exact** approved 512px black SVG (see [issue #32](https://github.com/gwapupward-hub/GWAPOHOLICS/issues/32)); do not approximate it. Prepare (do not publish) community materials in parallel. Private-beta cohort: [issue #31](https://github.com/gwapupward-hub/GWAPOHOLICS/issues/31).
