@@ -65,12 +65,13 @@ SELECT
     WHERE completed_at IS NOT NULL
       AND (jsonb_typeof(choices) <> 'array' OR jsonb_array_length(choices) <> 4)
   ) AS invalid_completed_quests,
-  (SELECT count(*)
-     FROM public.virtual_ledger
-    WHERE event_type = 'quest_settlement'
-    GROUP BY telegram_user_id, case_id
-   HAVING count(*) > 1
-   LIMIT 1) AS duplicate_settlement_group_example,
+  (SELECT count(*) FROM (
+     SELECT 1
+       FROM public.virtual_ledger
+      WHERE event_type = 'quest_settlement'
+      GROUP BY telegram_user_id, case_id
+     HAVING count(*) > 1
+   ) d) AS duplicate_settlement_groups,
   (SELECT count(*)
      FROM completed_cases c
     WHERE NOT EXISTS (SELECT 1 FROM public.virtual_ledger l
