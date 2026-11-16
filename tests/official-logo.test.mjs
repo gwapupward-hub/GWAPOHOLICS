@@ -29,3 +29,9 @@ test('app favicon uses the exact approved silhouette, not the old multi-color lo
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   assert.match(html, /<link\s+rel="icon"\s+href="\.\/brand\.svg"\s+type="image\/svg\+xml"/);
 });
+
+test('black silhouette has a contrasting app header container without altering the vector', () => {
+  const css = readFileSync(new URL('../styles.css', import.meta.url), 'utf8');
+  assert.match(css, /\.arcade-mark\{[^}]*background:var\(--green\)/,
+    'transparent black logo must have a visible contrasting UI tile');
+});
