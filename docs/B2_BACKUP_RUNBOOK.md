@@ -57,7 +57,10 @@ Restore into a **new, isolated, empty** PostgreSQL 18 database, NEVER the Previe
 
 ```bash
 # RESTORE_TEST_DATABASE_URL must point to the disposable restore database only.
-pg_restore --dbname="$RESTORE_TEST_DATABASE_URL" --no-owner --no-acl --exit-on-error ./backup.dump
+# Recover GWAPOHOLICS game tables only. The archived full dump also contains
+# neon_auth schema objects; exclude them from this game-ledger recovery drill.
+pg_restore --dbname="$RESTORE_TEST_DATABASE_URL" --schema=public \
+  --single-transaction --no-owner --no-acl --exit-on-error ./backup.dump
 ```
 
 Compare the four public tables (`players`, `quest_runs`, `command_receipts`, `virtual_ledger`) against the source snapshot and validate schema, indexes, constraints, and ledger settlement invariants. Clean up downloaded plaintext dumps and credentials securely. A successful upload **alone is not a verified backup**.
