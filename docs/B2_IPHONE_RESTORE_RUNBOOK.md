@@ -94,12 +94,15 @@ Open **[Neon Console](https://console.neon.tech/)** in Safari and select project
 In iSH, avoid putting a password or database URL into typed commands saved in shell history. Instead enter it when prompted:
 
 ```sh
-printf 'Paste ONLY the disposable Neon database connection URL: '
+printf 'Paste ONLY the disposable Neon database connection URL (input hidden): '
+stty -echo
 IFS= read -r RESTORE_TEST_DATABASE_URL
+stty echo
+printf '\\n'
 export RESTORE_TEST_DATABASE_URL
 ```
 
-Note: the above prompt is **visible input** on some iSH builds. Use a supported silent/read-secret prompt when available, or paste inside a temporary private shell session and clear clipboard immediately afterward. Never take a screenshot showing the URI.
+The `stty -echo` step prevents the private URI from being echoed into the terminal. If the terminal does not support `stty`, **stop** before pasting a credential. Clear the iOS clipboard afterward and never take a screenshot of the URI.
 
 **Critical preflight, before any restore:**
 
