@@ -1,6 +1,6 @@
 # GWAPOHOLICS — Sprint 1 iPhone Telegram QA worksheet
 
-**Status:** OPEN / not an acceptance pass  
+**Status:** FOUNDER-REPORTED FULL GAMEPLAY PASS; independent Preview aggregate ledger checks PASS; fault-injection and release gates still OPEN  
 **Test bot:** [@TestGwap_bot](https://t.me/TestGwap_bot)  
 **Environment:** authenticated Vercel Preview linked to the private test bot (**never** `?demo=1`)  
 **Android:** Deferred by founder decision; do not mark as verified.
@@ -21,17 +21,23 @@ Vercel project: `gwap-telegram-business-sim`. Latest inspected READY Preview dep
 - Evidence links (redacted):
 - Critical issues / owner / next smallest action:
 
+## Founder acceptance and independent verification (2026-11-15 ET)
+
+Founder reported completing the entire `@TestGwap_bot` gameplay successfully, with no issues observed. Independent **read-only** Neon Preview aggregate SQL returned 5 distinct completed case IDs, 4 choices per completed case, 0 duplicate user-case run groups and 0 player/latest-ledger balance mismatches. This validates persistent gameplay state and aggregate financial integrity for the inspected Preview branch, not signed session failure modes or the exact device/build identity. Device, Telegram version and Vercel deployment SHA for the founder's session were not reported; leave those fields open.
+
+**Claim discipline:** Do not mark reduced-motion, offline retry, second-device continuity, network fault-injection or backup restore as passed unless separately exercised.
+
 ## Five-quest playthrough matrix
 
 For each quest: finish four decisions, check all visible scene transitions, narrator text, tap-to-complete, safe areas and balance; record resulting virtual G balance and any rendering issues.
 
 | Quest ID | 4 decisions | Narration + props | Safe-area + reduced motion | Exactly-once settlement | Evidence |
 |---|---|---|---|---|---|
-| `streaming-pivot` | [ ] | [ ] | [ ] | [ ] | |
-| `brand-backlash` | [ ] | [ ] | [ ] | [ ] | |
-| `supply-shock` | [ ] | [ ] | [ ] | [ ] | |
-| `founder-runway` | [ ] | [ ] | [ ] | [ ] | |
-| `inflation-trap` | [ ] | [ ] | [ ] | [ ] | |
+| `streaming-pivot` | Founder-reported pass | Not separately documented | Not separately documented | No duplicates in read-only aggregate | Founder report / aggregate SQL |
+| `brand-backlash` | Founder-reported pass | Not separately documented | Not separately documented | No duplicates in read-only aggregate | Founder report / aggregate SQL |
+| `supply-shock` | Founder-reported pass | Not separately documented | Not separately documented | No duplicates in read-only aggregate | Founder report / aggregate SQL |
+| `founder-runway` | Founder-reported pass | Not separately documented | Not separately documented | No duplicates in read-only aggregate | Founder report / aggregate SQL |
+| `inflation-trap` | Founder-reported pass | Not separately documented | Not separately documented | No duplicates in read-only aggregate | Founder report / aggregate SQL |
 
 ## Persistence, error and security matrix
 
@@ -49,8 +55,8 @@ Use a separate disposable account/test fixture if reproducing lockout or destruc
 
 ## Gate exit decision
 
-- iPhone all-five quest acceptance: PASS / FAIL / NOT RUN
-- Signed persistence and settlement: PASS / FAIL / NOT RUN
+- iPhone all-five quest gameplay: **FOUNDER-REPORTED PASS**; exact device/build metadata OPEN
+- Server persistence and settlement: **aggregate SQL PASS** (five unique completed quests, four choices each, latest ledger balances match); explicit signed fault injection OPEN
 - WAF legitimate signed post-cooldown check: PASS / FAIL / NOT RUN
 - Deployed database TLS verification: PASS / FAIL / NOT RUN
 - Isolated offsite restore: PASS / FAIL / NOT RUN
