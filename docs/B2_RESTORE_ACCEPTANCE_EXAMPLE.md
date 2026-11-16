@@ -77,7 +77,7 @@ psql -X -v ON_ERROR_STOP=1 "$RESTORE_TEST_DATABASE_URL" \
 # Run ONLY after verifying 0 tables and independently checking branch identity.
 # Do not use --clean or --create. Atomic restore aborts on SQL error.
 pg_restore --dbname="$RESTORE_TEST_DATABASE_URL" \
-  --single-transaction --no-owner --no-acl ./backup.dump
+  --schema=public --single-transaction --no-owner --no-acl --exit-on-error ./backup.dump
 
 # From a clean local checkout of the approved repository:
 psql -X -v ON_ERROR_STOP=1 "$RESTORE_TEST_DATABASE_URL" \
