@@ -16,7 +16,7 @@
 - [ ] Encrypted archive SHA-256 equals the stored `.sha256` checksum exactly; record result, not credentials.
 - [ ] B2 Object Lock / retain-until date confirmed on **both** objects or an explicitly documented alternative immutable retention proof; expected default retention is 30 days (verify rather than assume).
 - [ ] Decrypt using the actual **private `age` identity** held outside GitHub (founder-controlled). Confirm `pg_restore --list` parses it.
-- [ ] Source archive restored successfully and **atomically** with PostgreSQL 18 `pg_restore --single-transaction` into a **NEW, independently verified EMPTY / DISPOSABLE** Neon database. Confirm its project/branch/endpoint; never use existing Preview, existing restore-test branch or main.
+- [ ] **Only the game `public` schema** from the source archive restored successfully and **atomically** with PostgreSQL 18 `pg_restore --schema=public --single-transaction` into a **NEW, independently verified EMPTY / DISPOSABLE** Neon database. Confirm its project/branch/endpoint; never use existing Preview, existing restore-test branch or main. The uploaded decrypted archive also contains **nine `neon_auth` tables** in addition to four `public` game tables, so restoring the entire archive would unnecessarily import authentication-related tables. This drill is scoped to game data recovery, **not** complete Neon Auth recovery.
 - [ ] `scripts/verify-restored-backup.sql` returns all expected tables, primary keys, unique settlement index, identity sequence, and **ZERO** ledger-chain/balance/quest/duplicate/missing-settlement errors.
 - [ ] Compare table counts and schema fingerprint to an **archive-time** source manifest if one was captured. Do not compare old backup counts against the current live Preview; gameplay may have changed the latter.
 - [ ] Owner records redacted evidence plus cleanup status. Only then mark #30 as **PASS**; the public production gate #34 still needs its other checks.
@@ -77,7 +77,7 @@ psql -X -v ON_ERROR_STOP=1 "$RESTORE_TEST_DATABASE_URL" \
 # Run ONLY after verifying 0 tables and independently checking branch identity.
 # Do not use --clean or --create. Atomic restore aborts on SQL error.
 pg_restore --dbname="$RESTORE_TEST_DATABASE_URL" \
-  --single-transaction --no-owner --no-acl ./backup.dump
+  --schema=public --single-transaction --no-owner --no-acl --exit-on-error ./backup.dump
 
 # From a clean local checkout of the approved repository:
 psql -X -v ON_ERROR_STOP=1 "$RESTORE_TEST_DATABASE_URL" \

@@ -122,9 +122,15 @@ gwap_b2_restore_20261116
 
 ## Restore and verify — only after the correct empty-database preflight
 
+**Archive scope warning — inspected original decrypted backup:** The operator-supplied `backup.dump` is a PostgreSQL custom archive (v1.16; 26,808 bytes) with **four `public` game tables and nine `neon_auth` tables**. The latter schema may include sensitive authentication material. For this **game-ledger recovery drill**, explicitly limit restore scope to `public`. Do not import `neon_auth` into the disposable game database or a fresh project without a separate privileged-authentication recovery plan and review. The current drill proves only restoration of the four application tables, not full Neon Auth recovery.
+
 ```sh
+# Inspect archive metadata without printing decrypted rows.
+pg_restore --list ./backup.dump >/dev/null
+
+# Restore ONLY the game tables and dependencies in the public schema.
 pg_restore --dbname="$RESTORE_TEST_DATABASE_URL" \
-  --single-transaction --no-owner --no-acl --exit-on-error \
+  --schema=public --single-transaction --no-owner --no-acl --exit-on-error \
   ./backup.dump
 
 curl -fsSLo ./verify-restored-backup.sql \
