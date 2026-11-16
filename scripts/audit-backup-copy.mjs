@@ -17,7 +17,7 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
     }
     continue;
   }
-  const match = /^COPY public\\.(players|quest_runs|virtual_ledger|command_receipts)\\s+\\(.*\\)\\s+FROM stdin;$/.exec(line);
+  const match = /^COPY public\.(players|quest_runs|virtual_ledger|command_receipts)\s+\(.*\)\s+FROM stdin;$/.exec(line);
   if (match) {
     active = match[1];
     if (seen.has(active)) {
