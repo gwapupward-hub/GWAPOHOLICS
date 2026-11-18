@@ -30,3 +30,34 @@ test('restore is pinned to a new empty database with version and retention guard
   assert.match(source,/audit-backup-copy.mjs/);
   assert.match(source,/verify-restored-backup.sql/);
 });
+
+test('historical backup script is syntactically valid and fails without operator confirmation', () => {
+  const path='scripts/archive-recovered-history.sh';
+  const parsed=spawnSync('bash',['-n',path],{encoding:'utf8'});
+  assert.equal(parsed.status,0,parsed.stderr);
+  const env={...process.env};
+  for (const key of ['HISTORICAL_SOURCE_DATABASE_URL','BACKUP_AGE_RECIPIENT',
+      'AWS_ACCESS_KEY_ID','AWS_SECRET_ACCESS_KEY']) delete env[key];
+  env.GWAP_CONFIRM_HISTORICAL_BACKUP='';
+  const refusal=spawnSync('bash',[path],{encoding:'utf8',env,timeout:3000});
+  assert.notEqual(refusal.status,0);
+  assert.match(refusal.stderr,/HISTORICAL_BACKUP=FAIL/);
+  assert.doesNotMatch(refusal.stdout,/UPLOADED/);
+});
+test('historical backup is pinned to the approved read-only Neon branch and never uploads plaintext',()=>{
+  const src=readFileSync('scripts/archive-recovered-history.sh','utf8');
+  assert.match(src,/ep-empty-union-bcc2zwqc/);
+  assert.match(src,/gwapoholics_backup_reader/);
+  assert.match(src,/not_read_only_source/);
+  assert.match(src,/--schema=public/);
+  assert.match(src,/audit-backup-copy\.mjs/);
+  assert.match(src,/age --recipient/);
+  assert.match(src,/--body "\$encrypted"/);
+  assert.match(src,/\.dump\.age/);
+});
+test('restoration accepts distinct version-pinned current Preview and historical archives',()=>{
+  const source=readFileSync('scripts/collect-b2-restore-evidence.sh','utf8');
+  assert.match(source,/gwapoholics-\(preview\|recovery\)/);
+  assert.match(source,/--version-id "\$B2_ARCHIVE_VERSION_ID"/);
+  assert.match(source,/--version-id "\$B2_CHECKSUM_VERSION_ID"/);
+});
