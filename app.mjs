@@ -5,6 +5,11 @@ import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARAC
 import { createSceneDirector, SCENE_STEPS, EXIT_STEPS } from "./story-director.mjs";
 import { bindTypewriter, DEFAULT_TYPE_SPEED } from "./typewriter.mjs";
 import { CASES, DIMENSIONS, RECOVERY_QUESTIONS } from "./cases.mjs";
+import { briefingFor } from "./briefing.mjs";
+import { dailyChallengeFor, dailyStage, dailyResult as calculateDailyResult } from "./daily-challenge.mjs";
+import { rankedForDate, upsertScore } from "./leaderboard.mjs";
+import { createDailyAudio } from "./daily-audio.mjs";
+import { ACHIEVEMENTS, enhancementsFor, enhancedScore, evaluateMiniGame, unlockAchievements } from "./daily-enhancements.mjs";
 import {
   STORAGE_KEY, MIN_PLAY_BALANCE, STARTING_COINS, RECOVERY_REWARD,
   createGame, startCase, chooseStep, completeChain, chainResult, stageView,
@@ -26,6 +31,9 @@ const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp
 const coins = (value) => new Intl.NumberFormat("en-US").format(value);
 const dateText = (time) => new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" }).format(new Date(time));
 const bestName = tg?.initDataUnsafe?.user?.first_name?.trim()?.slice(0, 16) || "Founder";
+const LEADERBOARD_STORAGE_KEY = "gwap.telegram.daily-leaderboard.v1";
+const ACHIEVEMENT_STORAGE_KEY = "gwap.telegram.daily-achievements.v1";
+const dailyAudio = createDailyAudio();
 
 let game;
 try {
@@ -35,6 +43,18 @@ try {
   game = createGame();
 }
 
+let leaderboardEntries = [];
+try {
+  const storedLeaderboard = JSON.parse(localStorage.getItem(LEADERBOARD_STORAGE_KEY));
+  leaderboardEntries = Array.isArray(storedLeaderboard) ? storedLeaderboard : [];
+} catch { /* local leaderboard is optional */ }
+
+let achievementState = { unlocked: [], history: [] };
+try {
+  const storedAchievements = JSON.parse(localStorage.getItem(ACHIEVEMENT_STORAGE_KEY));
+  if (storedAchievements && Array.isArray(storedAchievements.unlocked) && Array.isArray(storedAchievements.history)) achievementState = storedAchievements;
+} catch { /* achievements are optional */ }
+
 let view = "home";
 let caseId = null;
 let stage = "brief";
@@ -42,11 +62,27 @@ let selectedChoice = null;
 let toast = null;
 let resetArmed = false;
 let moveBusy = false;
+let briefingRevealed = false;
+let dailyPhase = "brief";
+let dailyPath = [];
+let dailyRun = null;
+let dailyEnhancementRun = null;
+let dailyBonus = null;
 
 function persist() {
   if (game.remote) return;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(game)); }
   catch { showToast("Device storage is unavailable; your progress may not persist."); }
+}
+
+function persistLeaderboard() {
+  try { localStorage.setItem(LEADERBOARD_STORAGE_KEY, JSON.stringify(leaderboardEntries)); }
+  catch { showToast("Device storage is unavailable; your leaderboard may not persist."); }
+}
+
+function persistAchievements() {
+  try { localStorage.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(achievementState)); }
+  catch { showToast("Device storage is unavailable; your achievements may not persist."); }
 }
 
 function haptic(kind = "light") {
@@ -143,10 +179,17 @@ async function authenticatePlayer(){
 }
 
 function changeView(next) {
+  if (next !== "daily") dailyAudio.stop();
   view = next;
   caseId = null;
   selectedChoice = null;
   resetArmed = false;
+  briefingRevealed = false;
+  dailyPhase = "brief";
+  dailyPath = [];
+  dailyRun = null;
+  dailyEnhancementRun = null;
+  dailyBonus = null;
   stage = "brief";
   haptic();
   render();
@@ -188,16 +231,63 @@ function miniBalance() {
   return `<div class="mini-balance"><span class="coin-glyph">◉</span><span>${coins(game.balance)}</span><small>G</small></div>`;
 }
 
+function openDailyChallenge() {
+  dailyRun = dailyChallengeFor();
+  dailyEnhancementRun = enhancementsFor(dailyRun.dateKey);
+  dailyPath = [];
+  dailyBonus = null;
+  dailyPhase = "brief";
+  view = "daily";
+  caseId = null;
+  dailyAudio.start();
+  dailyAudio.cue("open");
+  haptic();
+  render();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function dailyChallengePage() {
+  const challenge = dailyRun || dailyChallengeFor();
+  const entry = challenge.caseData;
+  const enhancements = dailyEnhancementRun || enhancementsFor(challenge.dateKey);
+  const audioControl = `<button class="daily-audio-toggle" data-action="toggle-daily-audio" aria-pressed="${dailyAudio.enabled()}">${dailyAudio.enabled() ? "SOUND ON" : "SOUND OFF"}</button>`;
+  if (dailyPhase === "result") {
+    const baseResult = calculateDailyResult(challenge, dailyPath);
+    const result = { ...baseResult, baseScore: baseResult.score, score: enhancedScore(baseResult.score, dailyBonus?.points, enhancements.modifier) };
+    const tier = result.score >= 800 ? "BOARDROOM READY" : result.score >= 550 ? "SOLID OPERATOR" : "BACK TO THE WHITEBOARD";
+    return `<div class="daily-flow page-enter"><div class="arcade-flowtop"><button data-action="nav" data-view="home">← BACK</button><span>DAILY CHALLENGE</span>${audioControl}</div><div class="arcade-new">${challenge.dateLabel.toUpperCase()} · SCORED RUN <b>✦</b></div><h1 class="arcade-title">${esc(entry.title.toUpperCase())}<em>.</em></h1><p class="arcade-hook">Your choices are scored separately from the Season 01 economy.</p><div class="daily-score"><small>ENHANCED CHALLENGE SCORE</small><strong>${result.score}</strong><span>${tier}</span></div><div class="daily-result-meta"><span>${enhancements.modifier.label}</span><b>+${dailyBonus?.points || 0} BONUS</b></div><p class="daily-score-note">Base score ${result.baseScore}. Modifier and Bonus Lab points are challenge-only; no G coins were added or removed.</p><button class="arcade-button" data-action="open-leaderboard">SEE TODAY'S LEADERBOARD <b>↗</b></button><button class="arcade-text-button" data-action="nav" data-view="home">Back to the floor</button></div>`;
+  }
+  if (dailyPhase === "bonus") {
+    const miniGame = enhancements.miniGame;
+    return `<div class="daily-flow page-enter"><div class="arcade-flowtop"><button data-action="nav" data-view="home">← PAUSE</button><span>BONUS LAB</span>${audioControl}</div><div class="arcade-new">${enhancements.modifier.label} <b>✦</b></div><h1 class="arcade-title">${esc(miniGame.title)}<em>.</em></h1><p class="arcade-hook">${esc(miniGame.label)} Correctly read the signal for up to 100 bonus points.</p><div class="modifier-card"><small>DAILY MODIFIER</small><strong>${esc(enhancements.modifier.label)}</strong><p>${esc(enhancements.modifier.description)}</p></div><div class="arcade-prompt"><h1>${esc(miniGame.prompt)}</h1></div><div class="arcade-choices">${miniGame.choices.map((choice, index) => `<button class="arcade-choice" data-action="daily-mini-choose" data-choice="${esc(choice.id)}"><span class="arcade-letter">${String.fromCharCode(65 + index)}</span><span><strong>${esc(choice.label)}</strong><small>${esc(choice.detail)}</small></span><b>↗</b></button>`).join("")}</div><p class="arcade-fine">One bonus decision. Then the four-round business case begins.</p></div>`;
+  }
+  if (dailyPhase === "decide") {
+    const step = dailyStage(challenge, dailyPath);
+    return `<div class="daily-flow page-enter"><div class="arcade-flowtop"><button data-action="nav" data-view="home">← PAUSE</button><span>DAILY · ${challenge.dateLabel.toUpperCase()}</span>${audioControl}</div><div class="arcade-round"><strong>ROUND ${step.index + 1}</strong><span>OF ${step.total}</span></div><div class="arcade-meter">${Array.from({ length: step.total }, (_, i) => `<i class="${i < step.index ? "done" : i === step.index ? "now" : ""}"></i>`).join("")}</div><div class="arcade-label">⚡ DAILY DECISION</div><div class="arcade-prompt"><p>${step.setup ? esc(step.setup) : "The market is waiting on your move."}</p><h1>${esc(step.prompt)}</h1></div><div class="arcade-pick">WHAT'S YOUR MOVE? <small>NO COINS AT STAKE</small></div><div class="arcade-choices">${step.choices.map((choice, index) => `<button class="arcade-choice" data-action="daily-choose" data-choice="${esc(choice.id)}"><span class="arcade-letter">${String.fromCharCode(65 + index)}</span><span><strong>${esc(choice.label)}</strong><small>${esc(choice.detail)}</small></span><b>↗</b></button>`).join("")}</div><p class="arcade-fine">Daily Challenge choices never alter your Season 01 progress.</p></div>`;
+  }
+  return `<div class="daily-flow page-enter"><div class="arcade-flowtop"><button data-action="nav" data-view="home">← BACK</button><span>DAILY CHALLENGE</span>${audioControl}</div><div class="arcade-new">ONE RUN · FOUR CALLS <b>✦</b></div><h1 class="arcade-title">TODAY'S<br><em>PRESSURE TEST.</em></h1><p class="arcade-hook">A fresh, deterministic challenge is waiting. Make the best call you can with the evidence in front of you.</p><div class="modifier-card"><small>TODAY'S MODIFIER</small><strong>${esc(enhancements.modifier.label)}</strong><p>${esc(enhancements.modifier.description)}</p><span>BONUS LAB · ${esc(enhancements.miniGame.title)}</span></div><div class="arcade-story"><div><strong>THE CASE</strong><small>${challenge.dateLabel.toUpperCase()}</small></div><p>${esc(entry.hook)}</p></div><div class="arcade-evidence">${entry.evidence.slice(0, 3).map((e) => `<div><small>${esc(e.label)}</small><b>${esc(e.value)}</b></div>`).join("")}</div><p class="arcade-tip">One bonus mini-game, then four business calls. No G coins at stake.</p><button class="arcade-button" data-action="start-daily">ENTER THE BONUS LAB <b>→</b></button></div>`;
+}
+
+function leaderboardPage() {
+  const challenge = dailyChallengeFor();
+  const ranked = rankedForDate(leaderboardEntries, challenge.dateKey);
+  return `<div class="page-enter"><div class="arcade-flowtop"><button data-action="nav" data-view="home">← BACK</button><span>DAILY SCORES</span></div><div class="arcade-new">${challenge.dateLabel.toUpperCase()} · LOCAL BOARD <b>✦</b></div><h1 class="arcade-title">THE<br><em>LEADERBOARD.</em></h1><p class="arcade-hook">Scores saved on this device for today's challenge. No network, account, or G coin balance is involved.</p>${ranked.length ? `<div class="leaderboard-list">${ranked.map((entry) => `<div class="leaderboard-row ${entry.name === bestName ? "is-you" : ""}"><span class="leaderboard-rank">${entry.rank}</span><span class="leaderboard-name"><strong>${esc(entry.name === bestName ? "YOU" : entry.name)}</strong><small>${entry.caseId === challenge.caseId ? "TODAY'S CASE" : "ARCHIVED RUN"}</small></span><b class="leaderboard-score">${entry.score}</b></div>`).join("")}</div>` : `<div class="leaderboard-empty">No scores yet. Complete today's Daily Challenge to claim the first spot on this device.</div>`}<p class="leaderboard-note">This is a local leaderboard for this browser or Telegram device. A shared cross-player board would require a separate server-backed leaderboard service.</p><button class="arcade-button" data-action="open-daily">PLAY TODAY'S CHALLENGE <b>→</b></button></div>`;
+}
+
 function welcome(){
 const next=activeCase(),done=game.played.length,prog=done*20;
+const brief=briefingFor();
 return `<div class="arcade-home page-enter">
 <div class="arcade-kicker"><span><i></i> SEASON 01 · ${esc(bestName.toUpperCase())}</span><span>${done}/5 CLEARED</span></div>
 <section class="arcade-hero"><div class="arcade-orbit">G</div><div class="arcade-star star-a">✦</div><div class="arcade-star star-b">✦</div>
 <div class="arcade-hero-inside"><span>THE WORLD IS YOUR BOARDROOM</span><h1>MAKE<br>THE <em>CALL.</em></h1><p>Big decisions. Bigger consequences.<br>Think fast. Build smart.</p>
 ${isLocked(game)?`<button class="arcade-button is-orange" data-action="nav" data-view="recovery">START YOUR COMEBACK <b>→</b></button>`:next?`<button class="arcade-button" data-action="open-case" data-case="${next.id}">${game.draft?.path.length?"CONTINUE MISSION":"PLAY NOW"} <b>→</b></button>`:`<button class="arcade-button" data-action="nav" data-view="profile">YOUR LEGACY <b>→</b></button>`}</div></section>
-${homeNarrator()}<div class="arcade-stats"><div><span>YOUR CAPITAL</span><strong>◉ ${coins(game.balance)}<small> G</small></strong></div><div><span>MISSIONS</span><strong>${done}<small> / 5</small></strong></div></div>
-<div class="arcade-how"><div>⚡</div><span><b>HOW TO PLAY</b><small>Read the problem → make a call → watch what happens. Four moves finish a mission.</small></span></div>
-<div class="arcade-section-title"><strong>UP NEXT</strong><small>${prog}% COMPLETE</small></div>
+	${homeNarrator()}<div class="arcade-stats"><div><span>YOUR CAPITAL</span><strong>◉ ${coins(game.balance)}<small> G</small></strong></div><div><span>MISSIONS</span><strong>${done}<small> / 5</small></strong></div></div>
+	<div class="arcade-how"><div>⚡</div><span><b>HOW TO PLAY</b><small>Read the problem → make a call → watch what happens. Four moves finish a mission.</small></span></div>
+	<section class="founder-brief ${briefingRevealed ? "is-revealed" : ""}"><div class="founder-brief-top"><span>FOUNDER BRIEF · ${brief.dateLabel.toUpperCase()}</span><b>NO COINS</b></div><strong>${esc(brief.signal)}</strong><p>${esc(brief.prompt)}</p>${briefingRevealed ? `<div class="founder-brief-takeaway"><small>FIELD NOTE</small><span>${esc(brief.takeaway)}</span></div>` : `<button class="founder-brief-button" data-action="reveal-brief">REVEAL THE FIELD NOTE <b>↗</b></button>`}</section>
+	<section class="daily-card"><div class="daily-card-top"><span>DAILY CHALLENGE</span><span>NO COINS AT STAKE</span></div><h2>ONE DAY. ONE CASE.</h2><p>A deterministic four-decision pressure test with a separate score. Come back tomorrow for a new case.</p><button class="daily-card-button" data-action="open-daily">ENTER TODAY'S RUN <b>↗</b></button></section>
+	<button class="daily-card-button" data-action="open-leaderboard">VIEW TODAY'S LEADERBOARD <b>↗</b></button>
+	<div class="arcade-section-title"><strong>UP NEXT</strong><small>${prog}% COMPLETE</small></div>
 ${next?`<button class="arcade-next" data-action="open-case" data-case="${next.id}"><b>${next.number}</b><span><small>${esc(next.category.toUpperCase())} · ${next.minutes} MIN</small><strong>${esc(next.title)}</strong><i>${esc(next.hook)}</i></span><em>↗</em></button>`:`<div class="arcade-next"><strong>Season 01 complete. Your choices shaped your legacy.</strong></div>`}
 <div class="arcade-progress"><span style="width:${prog}%"></span></div><p class="arcade-fine">Educational simulation · virtual coins have no cash value</p></div>`;
 }
@@ -259,6 +349,8 @@ function profilePage() {
   const summary = getDecisionStyle(game);
   const count = game.played.length;
   const sorted = DIMENSIONS.map((dimension) => ({ ...dimension, score: game.profile[dimension.key] || 0 }));
+  const unlocked = new Set(achievementState.unlocked);
+  const completedDaily = achievementState.history.length;
   return `<div class="page-enter"><div class="eyebrow with-line">YOUR PLAYER FILE <span>DECISION INTELLIGENCE</span></div><div class="page-heading"><h1>STRATEGY<br><em>DNA.</em></h1><p>Your decisions leave patterns. Learn how you think, then challenge your habits.</p></div>
     <div class="profile-card"><div class="profile-card-top"><span>PLAYER ARCHETYPE</span><span class="profile-asterisk">✳</span></div><h2>${esc(summary.title.toUpperCase())}</h2><p>${esc(summary.subtitle)}</p><div class="profile-divider"></div><div class="profile-meta"><div><span>DECISIONS</span><strong>${count}</strong></div><div><span>CAPITAL</span><strong>${coins(game.balance)} G</strong></div><div><span>STATUS</span><strong>${isLocked(game) ? "RECOVERY" : "ACTIVE"}</strong></div></div></div>
     <div class="section-label"><h2>YOUR 10 DIMENSIONS</h2><span class="tiny-index">DEVELOPING</span></div>
@@ -266,6 +358,7 @@ function profilePage() {
       const width = Math.max(6, Math.min(100, 50 + dim.score * 5));
       return `<div class="dimension"><div class="dimension-title"><span><b>${String(i + 1).padStart(2, "0")}</b> ${esc(dim.name)}</span><span>${dim.score > 0 ? "+" : ""}${dim.score}</span></div><div class="dimension-bar"><span style="width:${width}%"></span></div><small>${esc(dim.short)}</small></div>`;
     }).join("")}</div>
+    <div class="section-label"><h2>DAILY ACHIEVEMENTS</h2><span class="tiny-index">${unlocked.size}/${ACHIEVEMENTS.length} UNLOCKED</span></div><div class="achievement-summary"><strong>${completedDaily}</strong><span>DAILY RUN${completedDaily === 1 ? "" : "S"} LOGGED</span></div><div class="achievement-grid">${ACHIEVEMENTS.map((achievement) => `<div class="achievement-card ${unlocked.has(achievement.id) ? "is-unlocked" : ""}"><b>${unlocked.has(achievement.id) ? "★" : "·"}</b><span><strong>${esc(achievement.title)}</strong><small>${esc(achievement.description)}</small></span></div>`).join("")}</div>
     <div class="tip-panel">This is a reflection tool, not a financial aptitude test. Values represent the tendencies in your ${count || "future"} simulated decision${count === 1 ? "" : "s"}.</div>
     ${isTelegram ? "" : `<button class="cta secondary reset-button" data-action="reset">${resetArmed ? "TAP AGAIN TO RESET THE PREVIEW" : "RESET LOCAL PREVIEW DATA"}</button>`}
   </div>`;
@@ -544,6 +637,8 @@ function render(options = {}) {
   else if (view === "profile") content = profilePage();
   else if (view === "ledger") content = ledgerPage();
   else if (view === "recovery") content = recoveryPage();
+  else if (view === "daily") content = dailyChallengePage();
+  else if (view === "leaderboard") content = leaderboardPage();
   else if (view === "scenario") {
     const entry = getCase();
     const run = entry && game.played.find((item) => item.caseId === entry.id);
@@ -553,7 +648,7 @@ function render(options = {}) {
       : stage === "beat" && game.draft?.caseId === entry.id ? beatPage(entry)
       : caseBrief(entry);
   }
-  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> ${game.remote ? "VERIFIED TELEGRAM PLAYER · VIRTUAL COINS" : "PLAYTEST · LOCAL-ONLY COINS"} · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
+  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> ${game.remote ? "VERIFIED TELEGRAM PLAYER · VIRTUAL COINS" : "PLAYTEST · LOCAL-ONLY COINS"} · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" || view==="daily" || view==="leaderboard" ? "" : bottomnav()}</div></main>`;
   backButton();
   if (countPending) { countPending = false; countUp(); }
 }
@@ -576,10 +671,43 @@ root.addEventListener("click", async (event) => {
       button.setAttribute("aria-label", on ? "Turn story animation off" : "Turn story animation on");
       button.firstElementChild.textContent = on ? "✦" : "✧";
       if (!on) skipStory();
-    } else render();
-    return;
-  }
-  if (action === "nav") { changeView(button.dataset.view); return; }
+	  } else render();
+	    return;
+	  }
+	  if (action === "reveal-brief") { briefingRevealed = true; haptic("light"); render({ quiet: true }); return; }
+	  if (action === "open-daily") { openDailyChallenge(); return; }
+	  if (action === "open-leaderboard") { changeView("leaderboard"); return; }
+	  if (action === "toggle-daily-audio") { dailyAudio.toggle(); haptic("light"); render({ quiet: true }); return; }
+	  if (action === "start-daily") { dailyPhase = "bonus"; haptic(); render(); return; }
+	  if (action === "daily-mini-choose") {
+	    if (dailyPhase !== "bonus" || !dailyEnhancementRun) return;
+	    dailyBonus = evaluateMiniGame(dailyEnhancementRun.miniGame, button.dataset.choice);
+	    dailyAudio.cue("select");
+	    dailyPhase = "decide";
+	    haptic("medium");
+	    render();
+	    return;
+	  }
+	  if (action === "daily-choose") {
+	    if (dailyPhase !== "decide" || !dailyRun) return;
+	    dailyPath = [...dailyPath, button.dataset.choice];
+	    dailyAudio.cue("select");
+	    if (dailyPath.length === dailyRun.caseData.stages.length) {
+	      const baseResult = calculateDailyResult(dailyRun, dailyPath);
+	      const score = enhancedScore(baseResult.score, dailyBonus?.points, dailyEnhancementRun.modifier);
+      leaderboardEntries = upsertScore(leaderboardEntries, { challengeId: dailyRun.challengeId, dateKey: dailyRun.dateKey, caseId: dailyRun.caseId, score, name: bestName, at: Date.now(), modifierId: dailyEnhancementRun.modifier.id, miniGameId: dailyEnhancementRun.miniGame.id }, 1000);
+      persistLeaderboard();
+      const rank = rankedForDate(leaderboardEntries, dailyRun.dateKey).find((entry) => entry.challengeId === dailyRun.challengeId)?.rank || 0;
+      achievementState = unlockAchievements(achievementState, { challengeId: dailyRun.challengeId, dateKey: dailyRun.dateKey, score, bonusPoints: dailyBonus?.points || 0, modifierId: dailyEnhancementRun.modifier.id, miniGameId: dailyEnhancementRun.miniGame.id, miniGameCorrect: Boolean(dailyBonus?.correct), rank });
+      persistAchievements();
+      dailyAudio.cue("score");
+	      dailyPhase = "result";
+	    }
+	    haptic("medium");
+	    render();
+	    return;
+	  }
+	  if (action === "nav") { changeView(button.dataset.view); return; }
   if (action === "open-case") { openCase(button.dataset.case); return; }
   if (action === "decide") {
     try { if(game.remote) game=await remoteCommand("start",{caseId}); else {game=startCase(game,caseId);persist();} stage = "decide"; selectedChoice = null; haptic(); render(); }
@@ -648,7 +776,8 @@ root.addEventListener("submit", async (event) => {
 document.addEventListener("visibilitychange", () => {
   const hidden = document.visibilityState === "hidden";
   document.documentElement.classList.toggle("app-hidden", hidden);
-  if (hidden) skipStory();
+  if (hidden) { skipStory(); dailyAudio.suspend(); }
+  else dailyAudio.resume();
 });
 
 document.addEventListener("keydown", (event) => {
