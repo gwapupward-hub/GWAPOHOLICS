@@ -21,16 +21,16 @@ export const MODIFIERS = [
 ];
 
 export const ACHIEVEMENTS = [
-  { id: "first-call", title: "FIRST CALL", description: "Complete your first Daily Challenge." },
-  { id: "boardroom-ready", title: "BOARDROOM READY", description: "Score 800 or higher on a Daily Challenge." },
-  { id: "bonus-hunter", title: "BONUS HUNTER", description: "Earn the full 100-point bonus from a mini-game." },
-  { id: "score-chaser", title: "SCORE CHASER", description: "Beat your previous score for the same daily case." },
-  { id: "three-day-operator", title: "THREE-DAY OPERATOR", description: "Complete three consecutive Daily Challenges." },
-  { id: "week-one", title: "WEEK ONE", description: "Complete seven Daily Challenges." },
-  { id: "signal-reader", title: "SIGNAL READER", description: "Answer a signal-focused mini-game correctly." },
-  { id: "modifier-master", title: "MODIFIER MASTER", description: "Complete a run under every daily modifier." },
-  { id: "top-of-board", title: "TOP OF THE BOARD", description: "Finish first on the local leaderboard." },
-  { id: "month-in-room", title: "MONTH IN THE ROOM", description: "Complete thirty Daily Challenges." }
+  { id: "first-call", title: "FIRST CALL", description: "Complete your first Daily Challenge.", rarity: "common" },
+  { id: "boardroom-ready", title: "BOARDROOM READY", description: "Score 800 or higher on a Daily Challenge.", rarity: "rare" },
+  { id: "bonus-hunter", title: "BONUS HUNTER", description: "Earn the full 100-point bonus from a mini-game.", rarity: "uncommon" },
+  { id: "score-chaser", title: "SCORE CHASER", description: "Beat your previous score for the same daily case.", rarity: "uncommon" },
+  { id: "three-day-operator", title: "THREE-DAY OPERATOR", description: "Complete three consecutive Daily Challenges.", rarity: "uncommon" },
+  { id: "week-one", title: "WEEK ONE", description: "Complete seven Daily Challenges.", rarity: "rare" },
+  { id: "signal-reader", title: "SIGNAL READER", description: "Answer a signal-focused mini-game correctly.", rarity: "uncommon" },
+  { id: "modifier-master", title: "MODIFIER MASTER", description: "Complete a run under every daily modifier.", rarity: "epic" },
+  { id: "top-of-board", title: "TOP OF THE BOARD", description: "Finish first on the local leaderboard.", rarity: "common" },
+  { id: "month-in-room", title: "MONTH IN THE ROOM", description: "Complete thirty Daily Challenges.", rarity: "epic" }
 ];
 
 function hashText(text) {

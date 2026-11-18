@@ -9,7 +9,8 @@ import { briefingFor } from "./briefing.mjs";
 import { dailyChallengeFor, dailyStage, dailyResult as calculateDailyResult } from "./daily-challenge.mjs";
 import { rankedForDate, upsertScore } from "./leaderboard.mjs";
 import { createDailyAudio } from "./daily-audio.mjs";
-import { ACHIEVEMENTS, enhancementsFor, enhancedScore, evaluateMiniGame, unlockAchievements } from "./daily-enhancements.mjs";
+import { ACHIEVEMENTS, enhancementsFor, enhancedScore, evaluateMiniGame, evaluateAchievementUnlocks } from "./daily-enhancements.mjs";
+import { createAchievementNotificationQueue } from "./achievement-notifications.mjs";
 import {
   STORAGE_KEY, MIN_PLAY_BALANCE, STARTING_COINS, RECOVERY_REWARD,
   createGame, startCase, chooseStep, completeChain, chainResult, stageView,
@@ -68,6 +69,7 @@ let dailyPath = [];
 let dailyRun = null;
 let dailyEnhancementRun = null;
 let dailyBonus = null;
+let unsavedBadgeIds = [];
 
 function persist() {
   if (game.remote) return;
@@ -81,8 +83,8 @@ function persistLeaderboard() {
 }
 
 function persistAchievements() {
-  try { localStorage.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(achievementState)); }
-  catch { showToast("Device storage is unavailable; your achievements may not persist."); }
+  try { localStorage.setItem(ACHIEVEMENT_STORAGE_KEY, JSON.stringify(achievementState)); return true; }
+  catch { showToast("Device storage is unavailable; achievements are temporary and may not persist."); return false; }
 }
 
 function haptic(kind = "light") {
@@ -119,6 +121,75 @@ function backButton() {
 const toastHost = document.createElement("div");
 toastHost.className = "toast-host";
 document.body.append(toastHost);
+
+// Keep badge announcements independent from error toasts and #app re-renders.
+const achievementHost = document.createElement("div");
+achievementHost.className = "achievement-toast-host";
+achievementHost.dataset.achievementNotifications = "";
+achievementHost.setAttribute("role", "status");
+achievementHost.setAttribute("aria-live", "polite");
+achievementHost.setAttribute("aria-atomic", "true");
+document.body.append(achievementHost);
+
+const RARITIES = new Set(["common", "uncommon", "rare", "epic", "legendary"]);
+function rarityFor(achievement) {
+  return RARITIES.has(achievement.rarity) ? achievement.rarity : "common";
+}
+
+// Only unseen badges are stored per tab, so a reload can resume the queue
+// without repeating a toast that was already displayed.
+const PENDING_BADGES_KEY = "gwap.telegram.daily-badges-pending.v1";
+let pendingBadgeIds = [];
+try {
+  const stored = JSON.parse(sessionStorage.getItem(PENDING_BADGES_KEY));
+  if (Array.isArray(stored)) {
+    const valid = new Set(ACHIEVEMENTS.map((item) => item.id));
+    pendingBadgeIds = [...new Set(stored)].filter((id) => valid.has(id) && achievementState.unlocked.includes(id));
+  }
+} catch { /* the queue still works without session storage */ }
+function persistPendingBadges() {
+  try {
+    if (pendingBadgeIds.length) sessionStorage.setItem(PENDING_BADGES_KEY, JSON.stringify(pendingBadgeIds));
+    else sessionStorage.removeItem(PENDING_BADGES_KEY);
+  } catch { /* notifications remain available for this page session */ }
+}
+
+let focusBeforeBadge = null;
+const achievementQueue = createAchievementNotificationQueue({
+  onShow(achievement) {
+    pendingBadgeIds = pendingBadgeIds.filter((id) => id !== achievement.id);
+    persistPendingBadges();
+    if (document.activeElement !== document.body && !achievementHost.contains(document.activeElement)) focusBeforeBadge = document.activeElement;
+    const rarity = rarityFor(achievement);
+    achievementHost.innerHTML = `<div class="achievement-toast rarity-${rarity}" data-testid="achievement-toast" data-achievement-id="${esc(achievement.id)}"><span class="achievement-toast-icon" aria-hidden="true">★</span><span class="achievement-toast-copy"><small>BADGE UNLOCKED · ${esc(rarity.toUpperCase())}</small><strong>${esc(achievement.title)}</strong><span>${esc(achievement.description)}</span></span><button type="button" class="achievement-toast-close" aria-label="Dismiss achievement notification">×</button></div>`;
+  },
+  onHide() { achievementHost.replaceChildren(); }
+});
+
+function syncAchievementNotifications() {
+  const blocked = document.visibilityState === "hidden" || view === "scenario";
+  achievementHost.hidden = blocked;
+  if (blocked || achievementHost.contains(document.activeElement)) achievementQueue.pause();
+  else achievementQueue.resume();
+}
+function enqueueAchievements(ids) {
+  pendingBadgeIds = [...new Set([...pendingBadgeIds, ...ids])];
+  persistPendingBadges();
+  achievementQueue.enqueue(ids);
+}
+achievementHost.addEventListener("click", (event) => {
+  if (!event.target.closest(".achievement-toast-close")) return;
+  const hadFocus = achievementHost.contains(document.activeElement);
+  achievementQueue.dismiss();
+  if (hadFocus) {
+    syncAchievementNotifications();
+    const nextClose = achievementHost.querySelector(".achievement-toast-close");
+    const fallback = focusBeforeBadge?.isConnected ? focusBeforeBadge : root.querySelector("button:not([disabled])");
+    (nextClose || fallback)?.focus({ preventScroll: true });
+  }
+});
+achievementHost.addEventListener("focusin", syncAchievementNotifications);
+achievementHost.addEventListener("focusout", () => queueMicrotask(syncAchievementNotifications));
 // One polite live region announces each shot's full dialogue once, instead of every typed character.
 const announcer = document.createElement("div");
 announcer.className = "sr-only";
@@ -358,7 +429,7 @@ function profilePage() {
       const width = Math.max(6, Math.min(100, 50 + dim.score * 5));
       return `<div class="dimension"><div class="dimension-title"><span><b>${String(i + 1).padStart(2, "0")}</b> ${esc(dim.name)}</span><span>${dim.score > 0 ? "+" : ""}${dim.score}</span></div><div class="dimension-bar"><span style="width:${width}%"></span></div><small>${esc(dim.short)}</small></div>`;
     }).join("")}</div>
-    <div class="section-label"><h2>DAILY ACHIEVEMENTS</h2><span class="tiny-index">${unlocked.size}/${ACHIEVEMENTS.length} UNLOCKED</span></div><div class="achievement-summary"><strong>${completedDaily}</strong><span>DAILY RUN${completedDaily === 1 ? "" : "S"} LOGGED</span></div><div class="achievement-grid">${ACHIEVEMENTS.map((achievement) => `<div class="achievement-card ${unlocked.has(achievement.id) ? "is-unlocked" : ""}"><b>${unlocked.has(achievement.id) ? "★" : "·"}</b><span><strong>${esc(achievement.title)}</strong><small>${esc(achievement.description)}</small></span></div>`).join("")}</div>
+    <div class="section-label"><h2>DAILY ACHIEVEMENTS</h2><span class="tiny-index">${unlocked.size}/${ACHIEVEMENTS.length} UNLOCKED</span></div><div class="achievement-summary"><strong>${completedDaily}</strong><span>DAILY RUN${completedDaily === 1 ? "" : "S"} LOGGED</span></div><div class="achievement-grid">${ACHIEVEMENTS.map((achievement) => `<div class="achievement-card rarity-${rarityFor(achievement)} ${unlocked.has(achievement.id) ? "is-unlocked" : ""}" data-achievement-id="${esc(achievement.id)}"><b aria-hidden="true">${unlocked.has(achievement.id) ? "★" : "·"}</b><span><strong>${esc(achievement.title)}</strong><small class="achievement-rarity">${esc(rarityFor(achievement).toUpperCase())} · ${unlocked.has(achievement.id) ? "UNLOCKED" : "LOCKED"}</small><small>${esc(achievement.description)}</small></span></div>`).join("")}</div>
     <div class="tip-panel">This is a reflection tool, not a financial aptitude test. Values represent the tendencies in your ${count || "future"} simulated decision${count === 1 ? "" : "s"}.</div>
     ${isTelegram ? "" : `<button class="cta secondary reset-button" data-action="reset">${resetArmed ? "TAP AGAIN TO RESET THE PREVIEW" : "RESET LOCAL PREVIEW DATA"}</button>`}
   </div>`;
@@ -620,6 +691,7 @@ function chooseInStory(button) {
 }
 
 function render(options = {}) {
+  syncAchievementNotifications();
   if(remoteRequested && remoteStatus!=='ready'){
     leaveStory();
     const msg=remoteStatus==='connecting'
@@ -690,6 +762,7 @@ root.addEventListener("click", async (event) => {
 	  }
 	  if (action === "daily-choose") {
 	    if (dailyPhase !== "decide" || !dailyRun) return;
+	    let newlyUnlocked = [];
 	    dailyPath = [...dailyPath, button.dataset.choice];
 	    dailyAudio.cue("select");
 	    if (dailyPath.length === dailyRun.caseData.stages.length) {
@@ -698,13 +771,19 @@ root.addEventListener("click", async (event) => {
       leaderboardEntries = upsertScore(leaderboardEntries, { challengeId: dailyRun.challengeId, dateKey: dailyRun.dateKey, caseId: dailyRun.caseId, score, name: bestName, at: Date.now(), modifierId: dailyEnhancementRun.modifier.id, miniGameId: dailyEnhancementRun.miniGame.id }, 1000);
       persistLeaderboard();
       const rank = rankedForDate(leaderboardEntries, dailyRun.dateKey).find((entry) => entry.challengeId === dailyRun.challengeId)?.rank || 0;
-      achievementState = unlockAchievements(achievementState, { challengeId: dailyRun.challengeId, dateKey: dailyRun.dateKey, score, bonusPoints: dailyBonus?.points || 0, modifierId: dailyEnhancementRun.modifier.id, miniGameId: dailyEnhancementRun.miniGame.id, miniGameCorrect: Boolean(dailyBonus?.correct), rank });
-      persistAchievements();
+      const achievementResult = evaluateAchievementUnlocks(achievementState, { challengeId: dailyRun.challengeId, dateKey: dailyRun.dateKey, score, bonusPoints: dailyBonus?.points || 0, modifierId: dailyEnhancementRun.modifier.id, miniGameId: dailyEnhancementRun.miniGame.id, miniGameCorrect: Boolean(dailyBonus?.correct), rank });
+      achievementState = achievementResult.state;
+      unsavedBadgeIds = [...new Set([...unsavedBadgeIds, ...achievementResult.newlyUnlocked])];
+      if (persistAchievements()) {
+        newlyUnlocked = unsavedBadgeIds;
+        unsavedBadgeIds = [];
+      }
       dailyAudio.cue("score");
 	      dailyPhase = "result";
 	    }
 	    haptic("medium");
 	    render();
+	    enqueueAchievements(newlyUnlocked);
 	    return;
 	  }
 	  if (action === "nav") { changeView(button.dataset.view); return; }
@@ -778,10 +857,16 @@ document.addEventListener("visibilitychange", () => {
   document.documentElement.classList.toggle("app-hidden", hidden);
   if (hidden) { skipStory(); dailyAudio.suspend(); }
   else dailyAudio.resume();
+  syncAchievementNotifications();
 });
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Tab") story.keyboard = true;
+  if (event.key === "Escape" && achievementHost.contains(event.target)) {
+    event.preventDefault();
+    achievementHost.querySelector(".achievement-toast-close")?.click();
+    return;
+  }
   if (!story.active) return;
   const onControl = event.target.closest?.("button, a, input, summary, details, [tabindex]");
   if ((event.key === " " || event.key === "Enter") && !onControl) { event.preventDefault(); hurryStory(); }
@@ -815,3 +900,5 @@ root.addEventListener("error", (event) => {
 setupTelegram();
 if(remoteRequested)authenticatePlayer();
 else render();
+syncAchievementNotifications();
+achievementQueue.enqueue([...pendingBadgeIds]);

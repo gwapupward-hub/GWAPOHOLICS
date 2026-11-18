@@ -19,10 +19,19 @@ export function createAchievementNotificationQueue({
   const pending = [];
   let active = null;
   let disposed = false;
+  let paused = false;
+
+  function schedule(entry) {
+    if (disposed || paused || active !== entry) return;
+    const generation = ++entry.generation;
+    entry.timerId = setTimer(() => {
+      if (!disposed && !paused && active === entry && entry.generation === generation) dismiss();
+    }, durationMs);
+  }
 
   function showNext() {
-    if (disposed || active || !pending.length) return;
-    const entry = { achievement: catalog.get(pending.shift()), timerId: null };
+    if (disposed || paused || active || !pending.length) return;
+    const entry = { achievement: catalog.get(pending.shift()), timerId: null, generation: 0 };
     active = entry;
     try {
       onShow(entry.achievement);
@@ -33,11 +42,7 @@ export function createAchievementNotificationQueue({
       throw error;
     }
     // The callback may synchronously dismiss or dispose the queue.
-    if (disposed || active !== entry) return;
-    entry.timerId = setTimer(() => {
-      // Ignore callbacks from cancelled timers, even if a host delivers one late.
-      if (!disposed && active === entry) dismiss();
-    }, durationMs);
+    schedule(entry);
   }
 
   function dismiss() {
@@ -65,6 +70,24 @@ export function createAchievementNotificationQueue({
     return accepted;
   }
 
+  // A resumed badge gets a fresh full display interval.
+  function pause() {
+    if (disposed || paused) return;
+    paused = true;
+    if (active && active.timerId !== null) {
+      clearTimer(active.timerId);
+      active.timerId = null;
+      active.generation += 1;
+    }
+  }
+
+  function resume() {
+    if (disposed || !paused) return;
+    paused = false;
+    if (active) schedule(active);
+    else showNext();
+  }
+
   function dispose() {
     if (disposed) return;
     disposed = true;
@@ -79,6 +102,8 @@ export function createAchievementNotificationQueue({
   return {
     enqueue,
     dismiss,
+    pause,
+    resume,
     dispose,
     get activeId() { return active?.achievement.id || null; },
     get pendingIds() { return [...pending]; }

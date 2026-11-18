@@ -15,4 +15,13 @@
 - [x] Add a UI-independent notification queue with fake-clock tests for FIFO ordering, one-at-a-time display, duplicate/unknown IDs, dismissal, and timer cleanup.
 - [x] Run the focused tests and existing checks; keep visual rarity styling, production deployment, databases, and G coins unchanged.
 
-Verified: `npm run test:achievements` passes 36 tests; `npm test` passes all 155 tests; `npm run check` and `git diff --check` pass. The modifier-coverage regression also fixed unknown IDs counting toward Modifier Master. Notification toast presentation remains unwired, as documented in the README.
+Verified in the unit-test update: 36 focused tests and 155 full-suite tests passed. The modifier-coverage regression also fixed unknown IDs counting toward Modifier Master. Toast presentation was subsequently integrated below.
+
+## Achievement toast UI and end-to-end test
+
+- [x] On daily-run completion, persist new achievements, then show only newly unlocked badges in the existing FIFO notification queue without interrupting errors or other screens.
+- [x] Present a dismissible, accessible, animated badge toast with rarity labels/colors, mobile safe-area support, and reduced-motion behavior; preserve the existing sound settings and G coin economy.
+- [x] Exercise a real local Daily Challenge in Chromium and WebKit with Playwright: unlock, display, queue order, dismissal, persistence, navigation/reload, no duplicate notifications, and unchanged game balance.
+- [x] Run unit tests, syntax checks, and the relevant browser tests without accessing live player data or deploying production.
+
+Verified: `npm run test:e2e:daily` passes all 7 Playwright tests; the 5 existing mobile, full-season, and mocked authenticated browser tests also pass; `npm test` passes all 158 unit/regression tests; `npm run check` and `git diff --check` pass. Playwright covers muted audio state, normal and reduced motion, keyboard focus, pending badges after reload, storage failure and recovery, hidden pages, and Story Mode deferral.

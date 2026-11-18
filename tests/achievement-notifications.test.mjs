@@ -149,6 +149,47 @@ test("manual dismissal cancels the active timer and immediately displays the nex
   assert.equal(events.filter(([kind, id]) => kind === "hide" && id === "first-call").length, 1);
 });
 
+test("pausing an active toast freezes the queue until resume", () => {
+  const { queue, clock, events } = fixture();
+  queue.enqueue(batch);
+  const stale = clock.nextCallback;
+  clock.tick(20);
+  queue.pause();
+  queue.pause();
+  assert.equal(clock.timerCount, 0);
+  clock.tick(1000);
+  assert.equal(queue.activeId, "first-call");
+  assert.deepEqual(events, [["show", "first-call"]]);
+  queue.resume();
+  queue.resume();
+  assert.equal(clock.timerCount, 1);
+  stale();
+  assert.equal(queue.activeId, "first-call", "cancelled timer cannot dismiss resumed toast");
+  clock.tick(50);
+  assert.equal(queue.activeId, "bonus-hunter");
+  queue.dispose();
+});
+
+test("while paused, new and dismissed badges wait for resume in FIFO order", () => {
+  const { queue, clock, events } = fixture();
+  queue.pause();
+  queue.enqueue(batch);
+  assert.equal(queue.activeId, null);
+  assert.equal(clock.timerCount, 0);
+  assert.deepEqual(events, []);
+  queue.resume();
+  assert.equal(queue.activeId, "first-call");
+  queue.pause();
+  queue.dismiss();
+  assert.equal(queue.activeId, null);
+  assert.deepEqual(queue.pendingIds, ["bonus-hunter", "top-of-board"]);
+  queue.resume();
+  assert.equal(queue.activeId, "bonus-hunter");
+  clock.tick(100);
+  assert.equal(clock.timerCount, 0);
+  assert.deepEqual(events.filter(([type]) => type === "show").map(([, id]) => id), batch);
+});
+
 test("a late callback from a cancelled timer cannot hide the next active badge", () => {
   const { queue, clock, events } = fixture();
   queue.enqueue(batch);

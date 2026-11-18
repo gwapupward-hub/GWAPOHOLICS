@@ -37,6 +37,12 @@ function deepFreeze(value) {
   return value;
 }
 
+test("each achievement has a unique ID and a supported rarity label", () => {
+  const rarities = new Set(["common", "uncommon", "rare", "epic", "legendary"]);
+  assert.equal(new Set(ACHIEVEMENTS.map((badge) => badge.id)).size, ACHIEVEMENTS.length);
+  for (const badge of ACHIEVEMENTS) assert.ok(rarities.has(badge.rarity), badge.id);
+});
+
 test("a minimal first completion unlocks only first-call, including default state", () => {
   const completion = event();
   for (const previous of [undefined, emptyState()]) {
