@@ -16,7 +16,8 @@ const root = document.querySelector("#app");
 const tg = window.Telegram?.WebApp;
 const isTelegram = Boolean(tg?.initData);
 const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname) || location.protocol === "file:";
-const explicitDemo = new URLSearchParams(location.search).get("demo") === "1";
+// Never permit browser-only demo access on a deployed restricted-beta URL.
+const explicitDemo = localPreview && new URLSearchParams(location.search).get("demo") === "1";
 const canPlay = isTelegram || localPreview || explicitDemo;
 const remoteRequested = isTelegram && !explicitDemo;
 let remoteStatus = remoteRequested ? "connecting" : "demo";
