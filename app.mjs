@@ -553,7 +553,7 @@ function render(options = {}) {
       : stage === "beat" && game.draft?.caseId === entry.id ? beatPage(entry)
       : caseBrief(entry);
   }
-  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> ${game.remote ? "PRIVATE IOS BETA · VERIFIED PLAYER" : "PRIVATE BETA DEMO · LOCAL-ONLY COINS"} · VIRTUAL G · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
+  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> ${game.remote ? "PRIVATE IOS BETA · VERIFIED TELEGRAM PLAYER" : "PRIVATE BETA DEMO · LOCAL-ONLY COINS"} · VIRTUAL G · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
   backButton();
   if (countPending) { countPending = false; countUp(); }
 }
