@@ -1,3 +1,5 @@
+import { isGraduatedXpState, isValidXpState, levelFromXp } from "./v2-xp-policy.mjs";
+
 /**
  * GWAPOHOLICS v2 access policy (design-phase, unused by production).
  *
@@ -60,4 +62,25 @@ export function evaluateV2Access(action, player, serverFlags = {}) {
   if (action === "stars_cosmetic_purchase" &&
       serverFlags.starsPaymentIntegrationApproved !== true) return deny("payment_integration_not_approved");
   return Object.freeze({ allowed: true, reason: "eligible" });
+}
+
+
+/**
+ * Approved integration surface for future server-only routes.
+ * Derive graduated status and level EXCLUSIVELY from trusted, persisted XP.
+ * Other account flags must also come from server-side records.
+ *
+ * This helper still performs NO payment, token transfer, or wallet operation.
+ */
+export function evaluateV2AccessFromXpState(action, serverPlayer, xpState, serverFlags = {}) {
+  // Even corrupted state cannot enable a value exchange.
+  if (blocked.has(action)) return deny("value_exchange_disabled");
+  if (!isValidXpState(xpState)) return deny("xp_state_invalid");
+  if (!serverPlayer || typeof serverPlayer !== "object") return deny("session_not_verified");
+  const player = {
+    ...serverPlayer,
+    graduatedV1: isGraduatedXpState(xpState),
+    level: levelFromXp(xpState.xp)
+  };
+  return evaluateV2Access(action, player, serverFlags);
 }
