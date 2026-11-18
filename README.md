@@ -51,6 +51,16 @@ Open `http://localhost:4173/?demo=1` to play without Telegram or server credenti
 
 CI on the release branch runs `baseline`, `mobile-engines`, and `postgres-ledger`. The PostgreSQL integration job provisions disposable test storage and checks all five cases, idempotent settlement and cross-instance state. The main branch has an active ruleset requiring all three checks.
 
+### Protected-branch auto-merge
+
+Use `scripts/auto-merge-pr.sh` after opening a pull request into `main`:
+
+```bash
+npm run merge:pr -- 49
+```
+
+The script requires an authenticated GitHub CLI and `jq`. It verifies that the PR is open, non-draft, and targets `main`; waits for every reported status check; fails closed on failures, cancellations, missing checks, conflicts, or timeout; and then requests a squash merge through GitHub. The default PR is `49`; polling can be adjusted with `MERGE_CHECK_INTERVAL_SECONDS` and `MERGE_CHECK_TIMEOUT_SECONDS`. It never force-pushes or bypasses branch protection.
+
 ## Authenticated Preview architecture
 
 - `POST /api/session`: validates Telegram raw `initData`, then issues a short-lived HttpOnly, Secure session.
