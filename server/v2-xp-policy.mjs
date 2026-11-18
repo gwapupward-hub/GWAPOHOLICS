@@ -76,7 +76,8 @@ function isSafeAward(award) {
     typeof award.key === "string" && award.key.length >= 1 &&
     typeof award.kind === "string" && award.kind.length >= 1 &&
     Number.isSafeInteger(award.xp) && award.xp > 0 &&
-    Number.isSafeInteger(award.atMs) && award.atMs >= 0;
+    Number.isSafeInteger(award.atMs) && award.atMs >= 0 &&
+    award.atMs <= 8640000000000000;
 }
 
 /** Validates totals, uniqueness and known award keys (no client state trusted). */
