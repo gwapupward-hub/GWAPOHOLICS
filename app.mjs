@@ -23,7 +23,8 @@ const tg = window.Telegram?.WebApp;
 const isTelegram = Boolean(tg?.initData);
 const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname) || location.protocol === "file:";
 const explicitDemo = new URLSearchParams(location.search).get("demo") === "1";
-const canPlay = isTelegram || localPreview || explicitDemo;
+const previewMode = new URLSearchParams(location.search).get("preview") === "1";
+const canPlay = isTelegram || localPreview || explicitDemo || previewMode;
 const remoteRequested = isTelegram && !explicitDemo;
 let remoteStatus = remoteRequested ? "connecting" : "demo";
 let pendingCommand = null;
@@ -34,7 +35,19 @@ const dateText = (time) => new Intl.DateTimeFormat("en-US", { month: "short", da
 const bestName = tg?.initDataUnsafe?.user?.first_name?.trim()?.slice(0, 16) || "Founder";
 const LEADERBOARD_STORAGE_KEY = "gwap.telegram.daily-leaderboard.v1";
 const ACHIEVEMENT_STORAGE_KEY = "gwap.telegram.daily-achievements.v1";
+const SETTINGS_STORAGE_KEY = "gwap.telegram.settings.v1";
 const dailyAudio = createDailyAudio();
+
+const DEFAULT_SETTINGS = { haptics: true, notifications: true, privacy: true };
+let settings = { ...DEFAULT_SETTINGS };
+try {
+  const storedSettings = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY));
+  if (storedSettings && typeof storedSettings === "object") settings = { ...settings, ...storedSettings };
+} catch { /* settings are optional */ }
+
+function persistSettings() {
+  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings)); } catch { /* optional preference */ }
+}
 
 let game;
 try {
@@ -56,7 +69,7 @@ try {
   if (storedAchievements && Array.isArray(storedAchievements.unlocked) && Array.isArray(storedAchievements.history)) achievementState = storedAchievements;
 } catch { /* achievements are optional */ }
 
-let view = "home";
+let view = previewMode ? "preview" : "home";
 let caseId = null;
 let stage = "brief";
 let selectedChoice = null;
@@ -88,6 +101,7 @@ function persistAchievements() {
 }
 
 function haptic(kind = "light") {
+  if (!settings.haptics) return;
   try { tg?.HapticFeedback?.impactOccurred(kind); } catch { /* optional Telegram feature */ }
 }
 
@@ -173,6 +187,7 @@ function syncAchievementNotifications() {
   else achievementQueue.resume();
 }
 function enqueueAchievements(ids) {
+  if (!settings.notifications) return;
   pendingBadgeIds = [...new Set([...pendingBadgeIds, ...ids])];
   persistPendingBadges();
   achievementQueue.enqueue(ids);
@@ -284,6 +299,36 @@ function openCase(id) {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function toggleSetting(key) {
+  if (key === "sound") {
+    dailyAudio.setSfx(!dailyAudio.sfxEnabled());
+    render({ quiet: true });
+    return;
+  }
+  if (key === "music") {
+    dailyAudio.setMusic(!dailyAudio.musicEnabled());
+    render({ quiet: true });
+    return;
+  }
+  if (!(key in settings)) return;
+  settings = { ...settings, [key]: !settings[key] };
+  persistSettings();
+  haptic("light");
+  render({ quiet: true });
+}
+
+async function logoutPlayer() {
+  if (!game.remote) {
+    changeView("preview");
+    showToast("Demo session closed. Your local preview data is still on this device.");
+    return;
+  }
+  try {
+    await fetch("/api/logout", { method: "POST", credentials: "same-origin", headers: { "X-GWAP-Request": "1" } });
+  } catch { /* the server session will expire safely */ }
+  window.location.reload();
+}
+
 function getCase() { return CASES.find((entry) => entry.id === caseId); }
 
 // The chain you have open, or else the next case you have not played.
@@ -294,7 +339,7 @@ function activeCase() {
 
 function dotLogo(){return '<img src="./brand.svg" class="arcade-mark" alt="" width="42" height="42">';}
 
-function topbar(){return `<header class="topbar arcade-top"><div class="brand-lockup">${dotLogo()}<div class="arcade-wordmark"><strong>GWAPOHOLICS</strong><small>THE BUSINESS GAME</small></div></div><div class="arcade-wallet"><b>◉</b> ${coins(game.balance)}<small>G</small></div></header>`;}
+function topbar(){return `<header class="topbar arcade-top"><div class="brand-lockup">${dotLogo()}<div class="arcade-wordmark"><strong>GWAPOHOLICS</strong><small>THE BUSINESS GAME</small></div></div><div class="topbar-actions"><div class="arcade-wallet"><b>◉</b> ${coins(game.balance)}<small>G</small></div><button class="icon-button" data-action="nav" data-view="settings" aria-label="Open settings">⚙</button></div></header>`;}
 
 function bottomnav(){return `<nav class="bottomnav arcade-nav">${[["home","PLAY","◆"],["cases","MISSIONS","▦"],["profile","YOU","◉"]].map(([key,label,glyph])=>`<button class="tab ${view===key?"active":""}" data-action="nav" data-view="${key}"><span class="tab-icon">${glyph}</span><span>${label}</span></button>`).join("")}</nav>`;}
 
@@ -343,6 +388,17 @@ function leaderboardPage() {
   const challenge = dailyChallengeFor();
   const ranked = rankedForDate(leaderboardEntries, challenge.dateKey);
   return `<div class="page-enter"><div class="arcade-flowtop"><button data-action="nav" data-view="home">← BACK</button><span>DAILY SCORES</span></div><div class="arcade-new">${challenge.dateLabel.toUpperCase()} · LOCAL BOARD <b>✦</b></div><h1 class="arcade-title">THE<br><em>LEADERBOARD.</em></h1><p class="arcade-hook">Scores saved on this device for today's challenge. No network, account, or G coin balance is involved.</p>${ranked.length ? `<div class="leaderboard-list">${ranked.map((entry) => `<div class="leaderboard-row ${entry.name === bestName ? "is-you" : ""}"><span class="leaderboard-rank">${entry.rank}</span><span class="leaderboard-name"><strong>${esc(entry.name === bestName ? "YOU" : entry.name)}</strong><small>${entry.caseId === challenge.caseId ? "TODAY'S CASE" : "ARCHIVED RUN"}</small></span><b class="leaderboard-score">${entry.score}</b></div>`).join("")}</div>` : `<div class="leaderboard-empty">No scores yet. Complete today's Daily Challenge to claim the first spot on this device.</div>`}<p class="leaderboard-note">This is a local leaderboard for this browser or Telegram device. A shared cross-player board would require a separate server-backed leaderboard service.</p><button class="arcade-button" data-action="open-daily">PLAY TODAY'S CHALLENGE <b>→</b></button></div>`;
+}
+
+function previewPage() {
+  return `<section class="preview-page page-enter"><div class="preview-kicker"><span>GWAPOHOLICS · PLAYGROUND</span><b>v1 DEMO</b></div><div class="preview-mark">G<span>✦</span></div><h1>MAKE<br>THE <em>CALL.</em></h1><p class="preview-lead">A cinematic business game about pressure, tradeoffs and learning to move before the market does.</p><div class="preview-panel"><div><small>DEMO MODE</small><strong>LOCAL-ONLY PLAY</strong><p>Explore five missions, today's Daily Challenge, achievements and the local leaderboard. No Telegram account or outside service is required.</p></div><span>◉</span></div><button class="arcade-button" data-action="enter-demo">PLAY THE DEMO <b>→</b></button><button class="arcade-text-button" data-action="nav" data-view="settings">OPEN SETTINGS</button><p class="arcade-fine">Educational simulation · virtual G coins have no cash value</p></section>`;
+}
+
+function settingsPage() {
+  const audioOn = dailyAudio.enabled();
+  const musicOn = dailyAudio.musicEnabled();
+  const row = (key, label, detail, value) => `<button class="settings-row" data-action="toggle-setting" data-setting="${key}" aria-pressed="${value}"><span><strong>${label}</strong><small>${detail}</small></span><b class="settings-switch ${value ? "is-on" : ""}"><i></i></b></button>`;
+  return `<div class="settings-page page-enter"><div class="settings-heading"><button class="back-link" data-action="nav" data-view="${previewMode ? "preview" : "home"}">← BACK</button><span>CONTROL ROOM</span></div><div class="page-heading"><h1>GAME<br><em>SETTINGS.</em></h1><p>Make the room feel like yours. These preferences stay on this device.</p></div><section class="settings-card"><div class="settings-card-label">PLAYBACK</div>${row("sound", "Sound effects", "Decision chimes and score fanfare", audioOn)}${row("music", "Background music", "Procedural Daily Challenge synth bed", musicOn)}${row("haptics", "Haptics", "Telegram tap and decision feedback", settings.haptics)}</section><section class="settings-card"><div class="settings-card-label">NOTIFICATIONS & PRIVACY</div>${row("notifications", "Badge notifications", "Show achievement unlock popups", settings.notifications)}${row("privacy", "Private play mode", "Keep optional preference data on this device", settings.privacy)}<details class="settings-details"><summary>Privacy settings <b>⌄</b></summary><p>Demo progress, preferences, achievements and local scores stay in this browser's storage. No analytics or advertising profile is created by the demo. Authenticated Telegram progress is handled by the secure game service.</p></details></section><section class="settings-card"><div class="settings-card-label">ABOUT</div><details class="settings-details"><summary>Terms & conditions <b>⌄</b></summary><p>GWAPOHOLICS is an educational simulation. G coins are fictional, have no cash value and cannot be withdrawn, transferred or redeemed. Outcomes are invented for learning and entertainment.</p></details><details class="settings-details"><summary>Privacy policy <b>⌄</b></summary><p>We only use the data needed to run the game. Local demo data stays local. Telegram mode uses your authenticated player identity to save game progress and ledger results.</p></details></section><button class="settings-logout" data-action="logout">LOG OUT <b>↗</b></button><p class="arcade-fine">${game.remote ? "Authenticated Telegram session" : "Local preview session"} · virtual economy only</p></div>`;
 }
 
 function welcome(){
@@ -704,13 +760,15 @@ function render(options = {}) {
   if (storyEligible()) { renderStory(); return; }
   leaveStory();
   let content;
-  if (view === "home") content = welcome();
+  if (view === "preview") content = previewPage();
+  else if (view === "home") content = welcome();
   else if (view === "cases") content = caseList();
   else if (view === "profile") content = profilePage();
   else if (view === "ledger") content = ledgerPage();
   else if (view === "recovery") content = recoveryPage();
   else if (view === "daily") content = dailyChallengePage();
   else if (view === "leaderboard") content = leaderboardPage();
+  else if (view === "settings") content = settingsPage();
   else if (view === "scenario") {
     const entry = getCase();
     const run = entry && game.played.find((item) => item.caseId === entry.id);
@@ -720,7 +778,8 @@ function render(options = {}) {
       : stage === "beat" && game.draft?.caseId === entry.id ? beatPage(entry)
       : caseBrief(entry);
   }
-  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> ${game.remote ? "VERIFIED TELEGRAM PLAYER · VIRTUAL COINS" : "PLAYTEST · LOCAL-ONLY COINS"} · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" || view==="daily" || view==="leaderboard" ? "" : bottomnav()}</div></main>`;
+  const standalone = view === "preview";
+  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}${standalone ? " preview-shell" : ""}"><div class="app-inner">${standalone ? "" : topbar()}${standalone ? "" : `<div class="prototype-tag"><span>◉</span> ${game.remote ? "VERIFIED TELEGRAM PLAYER · VIRTUAL COINS" : "PLAYTEST · LOCAL-ONLY COINS"} · NO CASH VALUE</div>`}<div class="page-content${standalone ? " preview-content" : ""}${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" || view==="daily" || view==="leaderboard" || view==="settings" || standalone ? "" : bottomnav()}</div></main>`;
   backButton();
   if (countPending) { countPending = false; countUp(); }
 }
@@ -747,6 +806,9 @@ root.addEventListener("click", async (event) => {
 	    return;
 	  }
 	  if (action === "reveal-brief") { briefingRevealed = true; haptic("light"); render({ quiet: true }); return; }
+	  if (action === "enter-demo") { changeView("home"); return; }
+	  if (action === "toggle-setting") { toggleSetting(button.dataset.setting); return; }
+	  if (action === "logout") { await logoutPlayer(); return; }
 	  if (action === "open-daily") { openDailyChallenge(); return; }
 	  if (action === "open-leaderboard") { changeView("leaderboard"); return; }
 	  if (action === "toggle-daily-audio") { dailyAudio.toggle(); haptic("light"); render({ quiet: true }); return; }

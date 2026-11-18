@@ -25,3 +25,11 @@ Verified in the unit-test update: 36 focused tests and 155 full-suite tests pass
 - [x] Run unit tests, syntax checks, and the relevant browser tests without accessing live player data or deploying production.
 
 Verified: `npm run test:e2e:daily` passes all 7 Playwright tests; the 5 existing mobile, full-season, and mocked authenticated browser tests also pass; `npm test` passes all 158 unit/regression tests; `npm run check` and `git diff --check` pass. Playwright covers muted audio state, normal and reduced motion, keyboard focus, pending badges after reload, storage failure and recovery, hidden pages, and Story Mode deferral.
+
+## Preview landing page and settings
+
+- [x] Add a dedicated `?preview=1` landing page with clear local-demo messaging and a single action into the playable game.
+- [x] Add a settings control room with independent sound-effects, background-music, haptics, achievement-notification, and private-play toggles that persist on the device.
+- [x] Add privacy settings, terms and conditions, privacy policy disclosures, and logout behavior for both local demo and authenticated Telegram sessions.
+
+Verified with a mobile Chromium smoke test covering preview entry, settings navigation, sound persistence, privacy and terms disclosures, and demo entry; `npm run check` and the full suite pass after the logo contrast regression fix.

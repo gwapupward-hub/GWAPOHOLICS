@@ -1,4 +1,6 @@
 const AUDIO_PREF_KEY = "gwap.telegram.daily-audio.v1";
+const MUSIC_PREF_KEY = "gwap.telegram.music.v1";
+const SFX_PREF_KEY = "gwap.telegram.sfx.v1";
 
 function readEnabled() {
   try {
@@ -13,8 +15,23 @@ function saveEnabled(enabled) {
   try { globalThis.localStorage?.setItem(AUDIO_PREF_KEY, enabled ? "on" : "off"); } catch { /* optional preference */ }
 }
 
+function readPreference(key, fallback = true) {
+  try {
+    const saved = globalThis.localStorage?.getItem(key);
+    return saved === null ? fallback : saved !== "off";
+  } catch {
+    return fallback;
+  }
+}
+
+function savePreference(key, enabled) {
+  try { globalThis.localStorage?.setItem(key, enabled ? "on" : "off"); } catch { /* optional preference */ }
+}
+
 export function createDailyAudio() {
   let enabled = readEnabled();
+  let musicEnabled = readPreference(MUSIC_PREF_KEY, enabled);
+  let sfxEnabled = readPreference(SFX_PREF_KEY, enabled);
   let context = null;
   let musicGain = null;
   let musicNodes = [];
@@ -28,7 +45,7 @@ export function createDailyAudio() {
   }
 
   function start() {
-    if (!enabled) return false;
+    if (!musicEnabled) return false;
     const ctx = ensureContext();
     if (!ctx) return false;
     if (ctx.state === "suspended") ctx.resume().catch(() => {});
@@ -65,7 +82,7 @@ export function createDailyAudio() {
   }
 
   function cue(kind = "select") {
-    if (!enabled) return false;
+    if (!sfxEnabled) return false;
     const ctx = ensureContext();
     if (!ctx) return false;
     if (ctx.state === "suspended") ctx.resume().catch(() => {});
@@ -87,11 +104,29 @@ export function createDailyAudio() {
   }
 
   function toggle() {
-    enabled = !enabled;
+    enabled = !(musicEnabled && sfxEnabled);
     saveEnabled(enabled);
+    musicEnabled = enabled;
+    sfxEnabled = enabled;
+    savePreference(MUSIC_PREF_KEY, musicEnabled);
+    savePreference(SFX_PREF_KEY, sfxEnabled);
     if (enabled) start();
     else stop();
     return enabled;
+  }
+
+  function setMusic(next) {
+    musicEnabled = Boolean(next);
+    savePreference(MUSIC_PREF_KEY, musicEnabled);
+    if (musicEnabled) start();
+    else if (!musicEnabled) stop();
+    return musicEnabled;
+  }
+
+  function setSfx(next) {
+    sfxEnabled = Boolean(next);
+    savePreference(SFX_PREF_KEY, sfxEnabled);
+    return sfxEnabled;
   }
 
   function suspend() {
@@ -99,7 +134,7 @@ export function createDailyAudio() {
   }
 
   function resume() {
-    if (enabled && context?.state === "suspended") context.resume().catch(() => {});
+    if (musicEnabled && context?.state === "suspended") context.resume().catch(() => {});
   }
 
   return {
@@ -107,8 +142,12 @@ export function createDailyAudio() {
     stop,
     cue,
     toggle,
+    setMusic,
+    setSfx,
     suspend,
     resume,
-    enabled: () => enabled
+    enabled: () => sfxEnabled,
+    musicEnabled: () => musicEnabled,
+    sfxEnabled: () => sfxEnabled
   };
 }
