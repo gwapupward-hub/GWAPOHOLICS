@@ -64,3 +64,73 @@ Before any approved Preview change:
 Neither the original public bot nor public-production Vercel environment should be modified during this preparation. Remove recovery-only `api/recovery-source.js` and its host-pinned diagnostics before any public release branch is created. No merging of this ops PR until the owner reviews the workflow/CI and separately approves any necessary main-branch deployment consequences.
 
 **Gates:** #30 = B2 provenance PENDING; #42 = isolated gameplay PASS, active Preview cutover PENDING; #34 = public production BLOCKED. Android testing remains deferred; Solana withdrawals/tokens remain planning only.
+
+
+## D. Preserve recovered 5-quest history FIRST (manual archive; no Preview changes)
+
+**Important blocker newly verified:** Active Preview branch
+`br-billowing-sea-bcx8nhn7` currently lacks the exact
+`gwapoholics_backup_reader` role required by the existing scheduled Preview
+backup workflow. Running that workflow without first provisioning a scoped
+reader and updating its GitHub Environment secret will fail closed. Do not
+create database roles or modify live Preview without explicit approval.
+
+The historical candidate `br-polished-unit-bc02b798/neondb` **does** have
+`gwapoholics_backup_reader`. We independently queried that role and verified:
+all four public game tables are readable; no INSERT, UPDATE, DELETE or
+TRUNCATE privilege; exact records `2/5/7/27`. This makes it the safest
+currently available **nonmutating** source of the founder-tested five-quest
+state.
+
+Use `scripts/archive-recovered-history.sh` on a trusted machine running
+PostgreSQL 18 clients, Node.js, AWS CLI, `age`, GNU-compatible tools. Keep
+secrets in the private session only, and do not run while a recovery-game
+command is being processed if the goal is to compare data to a specific
+accepted snapshot.
+
+1. Obtain the **dedicated backup-reader** direct Postgres connection
+   for the historical candidate (`ep-empty-union-bcc2zwqc.c-16.us-east-1.aws.neon.tech`,
+   `neondb`). Set private environment variable
+   `HISTORICAL_SOURCE_DATABASE_URL`. Do not use the current active Preview
+   endpoint, or a general owner/admin database credential.
+2. Load PUBLIC `BACKUP_AGE_RECIPIENT` (matching the private identity stored
+   securely on the owner's phone). Set a restricted **write-only/no-delete**
+   B2 application key via `AWS_ACCESS_KEY_ID` and
+   `AWS_SECRET_ACCESS_KEY`. Keep the age private identity OFF the backup
+   machine: this step requires the PUBLIC recipient only.
+3. Review variables and run
+   `GWAP_CONFIRM_HISTORICAL_BACKUP=yes bash scripts/archive-recovered-history.sh`
+   on the operations PR branch. The script checks the exact Neon endpoint,
+   dedicated role and read-only permissions, generates a nonempty public-only
+   PostgreSQL 18 custom archive, encrypts with age, uploads the ciphertext and
+   checksum to B2, and records both object version IDs.
+4. Save its sanitized output privately. The expected archive should reflect
+   **2 players / 5 quests / 7 ledger / 27 receipts** if the recovery
+   database has not changed. An unexpected count should STOP acceptance,
+   not silently replace the validated recovery baseline.
+5. For the independent RESTORE PROOF, use distinct restricted B2 credentials
+   providing `readFiles`, `listFiles` and **`readFileRetentions`** (plus
+   applicable bucket-list permission). The Backblaze S3
+   `get-object-retention` API requires access to file-retention metadata.
+   Without `readFileRetentions` a false-negative "retention unavailable"
+   is expected. Grant no delete permission.
+6. Using the original owner's LOCAL age private identity, the exact
+   object/version IDs just uploaded, and the already prepared NEW empty
+   `gwap_b2_evidence_20261118` database, run
+   `GWAP_CONFIRM_DISPOSABLE_RESTORE=yes bash scripts/collect-b2-restore-evidence.sh`.
+   This script now accepts both `gwapoholics-preview-…` and
+   `gwapoholics-recovery-…` archive names, and does NOT accept an unknown
+   source or other target. Never use the source database itself as the
+   restore destination.
+
+The two scripts are separate intentionally: the backup machine needs only
+the **public encryption recipient**, while the restore machine needs the
+owner-held **private age identity**. Do not put both on a hosted workflow.
+Keep full object version IDs/checksums in the private operations record, and
+share only sanitized counts and PASS/FAIL in GitHub.
+
+**Execution status:** historical encrypted upload and B2 download/restore
+are NOT yet executed by these preparation changes. Do not close #30 until
+the independently verified B2 ciphertext successfully restores actual
+nonempty game records. Preserve both old and newly created rollback branches
+throughout. Neither script changes active Preview.
