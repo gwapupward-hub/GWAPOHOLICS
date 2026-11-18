@@ -110,7 +110,7 @@ The Seasons tab shifts the game's meta every 48 hours, preventing idle fatigue a
 
 `🏠 Penthouse` (Idle & Growth) → `⚡ Terminal` (Rogue-Lite) → `🗺️ Syndicate` (Async PvP Heists) → `🗓️ Seasons` (Live-Ops)
 
-- **Tab 1, The Penthouse (progression hub):** Isometric visual evolution, tap-to-earn core, bot fleet management, and eccentric trait customization (Diamond Hands, Day Trader).
+- **Tab 1, The Penthouse (progression hub):** Isometric visual evolution, tap-to-earn core, bot fleet management, and eccentric trait customization (Diamond Hands, Overclocker). Trait names avoid betting language.
 - **Tab 2, The Terminal (action core):** CRT neon hacker grid, 30-second reflex challenges, randomized security modifiers, and high-risk payout multipliers.
 - **Tab 3, The Syndicate Map (social PvP):** Tactical radar grid, target selection for async heists, vault defense shields, and group chat boss summon triggers.
 - **Tab 4, The Seasons (live-ops):** Season board, 48-hour Surge/Lockdown toggles, Reserve Vaults, and flash events.
@@ -119,7 +119,7 @@ The Seasons tab shifts the game's meta every 48 hours, preventing idle fatigue a
 
 - **One-tap Story flex cards:** Export cinematic visual summaries of hideout tiers, net-worth rankings, and rare loot directly to Telegram Stories.
 - **Group chat "Vault Boss" raids:** Summon cryptographic AI bosses into group chats; members tap collaboratively to crack codes and split bounties.
-- **Async push notifications:** High-stakes alerts for inbound rival raids (e.g., "@CryptoKing breached your vault! Retaliate now!") to drive immediate re-engagement.
+- **Async push notifications:** Opt-in alerts for inbound rival raids, using pseudonymous crew names and neutral copy (e.g., "Rival crew 'Ghost Protocol' breached your vault. View the damage report."). No real usernames, no loss-pressure wording, and capped frequency.
 
 ### E. Motion and haptic polish
 
