@@ -18,6 +18,13 @@ The `feat/v1-private-beta-release-candidate` branch is an implemented, tested **
 
 - Five full-screen cinematic quests, nine illustrated scenes each (45 total), character/typewriter narration, staged props, transitions and reduced-motion support.
 - Four linked player decisions per quest, unique outcome bands and a server-settled balance.
+- A rotating daily Founder Brief on the home screen gives players a no-stakes strategy prompt and revealable field note between missions.
+- A deterministic Daily Challenge mode presents one four-decision case per day with a separate 0–1,000 score; it never changes G coins or Season 01 progress.
+- Daily Challenge now adds a deterministic Bonus Lab that rotates through eight mini-games: Flash Pitch, Risk Radar, Negotiation Duel, Signal or Noise, Runway Countdown, Boardroom Poll, Market Memory and Crisis Triage.
+- Each date also carries a visible modifier such as Cash Is Tight, Trust Is Fragile or Signal Hunt. The modifier and Bonus Lab result feed the enhanced challenge score without touching G coins.
+- Ten local achievements track first calls, score milestones, streaks, bonus accuracy, modifier coverage and leaderboard placement; unlocked badges appear in the Strategy DNA profile.
+- A local Daily Leaderboard stores the best enhanced score for each completed run on the current device and ranks today's entries without claiming to be a shared online board. A shared board still needs a server-backed score table, authenticated submission and replay validation.
+- Daily Challenge has an opt-in procedural synth bed, decision chimes, and score fanfare with a persistent Sound On/Off control; audio starts only after a player gesture and suspends when the page is hidden.
 - Each new Telegram player starts with **1,000 virtual G coins**. At under **100 G**, missions lock, with limited educational recovery after the required cooldown.
 - Quests can settle **only once**; duplicate network requests return the previously saved result.
 - Game balance, progress, coin ledger and completed quests persist through a dedicated Neon/PostgreSQL store and can be resumed by the same Telegram identity on another device.
@@ -34,9 +41,25 @@ npm test
 npm run dev
 ```
 
-Open `http://localhost:4173/?demo=1` to play without Telegram or server credentials. Never use browser demo state as authoritative data.
+Run `npm run test:achievements` for achievement-unlock and notification-queue unit tests. These tests use Node's built-in test runner and an injected fake clock, with no real sleeps, browser, database, or extra dependencies. `npm test` includes them automatically.
+
+`evaluateAchievementUnlocks(state, event)` returns `{ state, newlyUnlocked }` without changing the legacy `unlockAchievements()` or saved-state shape. On a completed daily run, the app saves the result, renders the score, and enqueues only the new IDs in `achievement-notifications.mjs`. Rarity-labeled badge toasts appear one at a time in a separate, polite live region with a dismiss button; profile badges use matching colors and text labels. The queue pauses when the page is hidden, a toast has keyboard focus, or Story Mode is open; unshown badges resume after a reload when tab session storage is available. If achievement storage fails, an error warns that progress is temporary instead of announcing a saved unlock. Reduced-motion settings are respected. The existing Daily Challenge audio toggle and cues are unchanged.
+
+For the isolated Playwright Daily Challenge flow, start `npm run dev` in one terminal. In another, install the CI-pinned driver and browsers (`npm install --no-save --no-package-lock playwright@1.56.1` and `npx playwright install --with-deps chromium webkit`), then run `npm run test:e2e:daily`. For the dedicated preview/settings flow, run `npm run test:e2e:preview`. Both tests use local demo mode and fresh browser contexts, not a live Telegram account or database; the Daily Challenge test is also included in the existing `mobile-engines` browser CI suite.
+
+Open `http://localhost:4173/?preview=1` for the dedicated demo landing page, then choose **PLAY THE DEMO** to enter local gameplay. `?demo=1` remains available as a direct game entrypoint. The settings control room exposes independent sound-effects, background-music, haptics, achievement-notification and private-play toggles, plus privacy details, terms, and logout. These preferences are device-local; Telegram logout calls `/api/logout`, while local logout returns to the preview landing page without deleting demo data. The preview server also honors `HOST` and `PORT` for hosted forwarding, and exposes the single-page route manifest at `/manus-routes.json`. Never use browser demo state as authoritative data.
 
 CI on the release branch runs `baseline`, `mobile-engines`, and `postgres-ledger`. The PostgreSQL integration job provisions disposable test storage and checks all five cases, idempotent settlement and cross-instance state. The main branch has an active ruleset requiring all three checks.
+
+### Protected-branch auto-merge
+
+Use `scripts/auto-merge-pr.sh` after opening a pull request into `main`:
+
+```bash
+npm run merge:pr -- 49
+```
+
+The script requires an authenticated GitHub CLI and `jq`. It verifies that the PR is open, non-draft, and targets `main`; waits for every reported status check; fails closed on failures, cancellations, missing checks, conflicts, or timeout; and then requests a squash merge through GitHub. The default PR is `49`; polling can be adjusted with `MERGE_CHECK_INTERVAL_SECONDS` and `MERGE_CHECK_TIMEOUT_SECONDS`. It never force-pushes or bypasses branch protection.
 
 ## Authenticated Preview architecture
 
