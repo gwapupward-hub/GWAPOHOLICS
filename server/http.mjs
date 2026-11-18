@@ -45,7 +45,7 @@ async function jsonBody(req,maxBytes=17_000){
 function exactKeys(body,keys){
  return Object.keys(body).every(k=>keys.includes(k));
 }
-export async function handleSession(req,res,{botToken,sessionSecret,now=Date.now()}={}){
+export async function handleSession(req,res,{botToken,sessionSecret,betaAllowedUserIds,now=Date.now()}={}){
  if(req.method!=='POST'){send(res,405,{error:'method_not_allowed'});return}
  if(!authorizedMutation(req)){send(res,403,{error:'forbidden_origin'});return}
  if(!botToken||!sessionSecret){send(res,503,{error:'authentication_unavailable'});return}
@@ -54,6 +54,9 @@ export async function handleSession(req,res,{botToken,sessionSecret,now=Date.now
  if(!exactKeys(body,['initData'])||typeof body.initData!=='string'){send(res,400,{error:'invalid_request'});return}
  try{
   const claim=verifyTelegramInitData(body.initData,{botToken,now});
+  if(betaAllowedUserIds instanceof Set&&!betaAllowedUserIds.has(claim.userId)){
+   send(res,403,{error:'beta_invite_required'});return
+  }
   const cookie=issueSessionCookie(claim.userId,{secret:sessionSecret,now});
   send(res,200,{authenticated:true,expiresInSeconds:3600},cookie);
  }catch(e){
@@ -66,7 +69,7 @@ export async function handleLogout(req,res){
  if(!authorizedMutation(req)){send(res,403,{error:'forbidden_origin'});return}
  send(res,200,{authenticated:false},clearSessionCookie());
 }
-export async function handleGame(req,res,{sessionSecret,previousSessionSecret,store,now=Date.now()}={}){
+export async function handleGame(req,res,{sessionSecret,previousSessionSecret,store,betaAllowedUserIds,now=Date.now()}={}){
  if(!['GET','POST'].includes(req.method)){send(res,405,{error:'method_not_allowed'});return}
  if(!sessionSecret||!store){send(res,503,{error:'game_service_unavailable'});return}
  let session;
@@ -74,6 +77,9 @@ export async function handleGame(req,res,{sessionSecret,previousSessionSecret,st
   send(res,503,{error:'game_service_unavailable'});return
  }
  if(!session){send(res,401,{error:'sign_in_required'});return}
+ if(betaAllowedUserIds instanceof Set&&!betaAllowedUserIds.has(session.userId)){
+  send(res,403,{error:'beta_invite_required'});return
+ }
  let payload={command:'snapshot'};
  if(req.method==='POST'){
   if(!authorizedMutation(req)){send(res,403,{error:'forbidden_origin'});return}
