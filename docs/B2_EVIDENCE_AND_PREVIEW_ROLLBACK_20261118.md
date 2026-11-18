@@ -75,12 +75,18 @@ backup workflow. Running that workflow without first provisioning a scoped
 reader and updating its GitHub Environment secret will fail closed. Do not
 create database roles or modify live Preview without explicit approval.
 
-The historical candidate `br-polished-unit-bc02b798/neondb` **does** have
-`gwapoholics_backup_reader`. We independently queried that role and verified:
-all four public game tables are readable; no INSERT, UPDATE, DELETE or
-TRUNCATE privilege; exact records `2/5/7/27`. This makes it the safest
-currently available **nonmutating** source of the founder-tested five-quest
-state.
+**Dedicated historical backup snapshot now provisioned:** branch
+`backup-source/historical-five-quests-20261118` (ID `br-round-hat-bcrldljj`),
+created as an isolated copy of the founder-tested recovery branch. Exact game
+records `2/5/7/27`. Host
+`ep-aged-mountain-bcu7g4ps.c-16.us-east-1.aws.neon.tech`.
+Only this isolated BACKUP copy received a narrow `GRANT SELECT ON SEQUENCE
+public.virtual_ledger_id_seq TO gwapoholics_backup_reader`, required for
+`pg_dump` to read the identity sequence value. The original recovery
+branch remains unmodified. We independently verified that the backup reader
+can read all four tables and this sequence, has NO game-table mutation
+permissions and has NO sequence USAGE permission. **This source snapshot is
+not bound to Vercel or Telegram.**
 
 Use `scripts/archive-recovered-history.sh` on a trusted machine running
 PostgreSQL 18 clients, Node.js, AWS CLI, `age`, GNU-compatible tools. Keep
@@ -89,7 +95,7 @@ command is being processed if the goal is to compare data to a specific
 accepted snapshot.
 
 1. Obtain the **dedicated backup-reader** direct Postgres connection
-   for the historical candidate (`ep-empty-union-bcc2zwqc.c-16.us-east-1.aws.neon.tech`,
+   for the isolated historical backup copy (`ep-aged-mountain-bcu7g4ps.c-16.us-east-1.aws.neon.tech`,
    `neondb`). Set private environment variable
    `HISTORICAL_SOURCE_DATABASE_URL`. Do not use the current active Preview
    endpoint, or a general owner/admin database credential.
@@ -104,9 +110,8 @@ accepted snapshot.
    dedicated role and read-only permissions, generates a nonempty public-only
    PostgreSQL 18 custom archive, encrypts with age, uploads the ciphertext and
    checksum to B2, and records both object version IDs.
-4. Save its sanitized output privately. The expected archive should reflect
-   **2 players / 5 quests / 7 ledger / 27 receipts** if the recovery
-   database has not changed. An unexpected count should STOP acceptance,
+4. Save its sanitized output privately. The archive script **requires exactly 2 players / 5 quests / 7 ledger /
+   27 receipts** from the isolated source. An unexpected count will STOP acceptance,
    not silently replace the validated recovery baseline.
 5. For the independent RESTORE PROOF, use distinct restricted B2 credentials
    providing `readFiles`, `listFiles` and **`readFileRetentions`** (plus
