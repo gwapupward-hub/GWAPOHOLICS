@@ -296,7 +296,7 @@ function recoveryPage() {
 function gatePage() {
   const username = BOT_USERNAME.replace(/^@/, "").trim();
   const link = username ? `https://t.me/${encodeURIComponent(username)}?startapp` : null;
-  return `<div class="gate-wrap">${dotLogo()}<span class="gate-label">TELEGRAM EXCLUSIVE</span><h1>THE GAME<br>LIVES IN<br><em>TELEGRAM.</em></h1><p>This game is built specifically for the Telegram Mini App experience. Open it inside Telegram to make your first move.</p>${link ? `<a class="cta primary" href="${link}">OPEN IN TELEGRAM <span>↗</span></a>` : `<div class="gate-missing">Bot link coming soon. The founder must configure a Telegram bot and a public HTTPS Mini App URL.</div>`}<small>Virtual economy only · No token or withdrawal</small></div>`;
+  return `<div class="gate-wrap">${dotLogo()}<span class="gate-label">TELEGRAM EXCLUSIVE</span><h1>THE GAME<br>LIVES IN<br><em>TELEGRAM.</em></h1><p>This game is built specifically for the Telegram Mini App experience. Open it inside Telegram to make your first move.</p>${link ? `<a class="cta primary" href="${link}">OPEN IN TELEGRAM <span>↗</span></a>` : `<div class="gate-missing">Restricted iPhone beta. Open your private invitation to the approved beta bot inside Telegram. This URL is not a public game launch.</div>`}<small>Virtual economy only · No token or withdrawal</small></div>`;
 }
 
 // Set when a chain settles, so the result amount counts up once after the screen appears.
@@ -553,7 +553,7 @@ function render(options = {}) {
       : stage === "beat" && game.draft?.caseId === entry.id ? beatPage(entry)
       : caseBrief(entry);
   }
-  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> ${game.remote ? "VERIFIED TELEGRAM PLAYER · VIRTUAL COINS" : "PLAYTEST · LOCAL-ONLY COINS"} · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
+  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> ${game.remote ? "PRIVATE IOS BETA · VERIFIED PLAYER" : "PRIVATE BETA DEMO · LOCAL-ONLY COINS"} · VIRTUAL G · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
   backButton();
   if (countPending) { countPending = false; countUp(); }
 }
