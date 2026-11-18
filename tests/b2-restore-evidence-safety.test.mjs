@@ -46,7 +46,9 @@ test('historical backup script is syntactically valid and fails without operator
 });
 test('historical backup is pinned to the approved read-only Neon branch and never uploads plaintext',()=>{
   const src=readFileSync('scripts/archive-recovered-history.sh','utf8');
-  assert.match(src,/ep-empty-union-bcc2zwqc/);
+  assert.match(src,/ep-aged-mountain-bcu7g4ps/);
+  assert.match(src,/expected_history_counts_mismatch/);
+  assert.match(src,/has_sequence_privilege/);
   assert.match(src,/gwapoholics_backup_reader/);
   assert.match(src,/not_read_only_source/);
   assert.match(src,/--schema=public/);
