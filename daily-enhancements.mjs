@@ -79,7 +79,7 @@ export function unlockAchievements(state = { unlocked: [], history: [] }, event)
   const history = [...(state.history || []), { ...event }].slice(-100);
   const unlocked = new Set(state.unlocked || []);
   const priorSameDay = history.filter((entry) => entry.challengeId === event.challengeId).slice(0, -1).sort((a, b) => b.score - a.score)[0];
-  const modifierCount = new Set(history.map((entry) => entry.modifierId)).size;
+  const completedModifiers = new Set(history.map((entry) => entry.modifierId));
   const unlock = (id) => unlocked.add(id);
   if (history.length >= 1) unlock("first-call");
   if (event.score >= 800) unlock("boardroom-ready");
@@ -88,10 +88,20 @@ export function unlockAchievements(state = { unlocked: [], history: [] }, event)
   if (consecutiveDays(history) >= 3) unlock("three-day-operator");
   if (new Set(history.map((entry) => entry.dateKey)).size >= 7) unlock("week-one");
   if (event.miniGameCorrect) unlock("signal-reader");
-  if (modifierCount >= MODIFIERS.length) unlock("modifier-master");
+  if (MODIFIERS.every((modifier) => completedModifiers.has(modifier.id))) unlock("modifier-master");
   if (event.rank === 1) unlock("top-of-board");
   if (new Set(history.map((entry) => entry.dateKey)).size >= 30) unlock("month-in-room");
   return { unlocked: [...unlocked], history };
+}
+
+// Opt-in transition API: existing callers and persisted state keep their shape.
+export function evaluateAchievementUnlocks(state, event) {
+  const previous = new Set(state?.unlocked || []);
+  const nextState = unlockAchievements(state, event);
+  return {
+    state: nextState,
+    newlyUnlocked: nextState.unlocked.filter((id) => !previous.has(id))
+  };
 }
 
 export function allEnhancements() {

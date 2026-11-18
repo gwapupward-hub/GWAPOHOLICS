@@ -41,6 +41,10 @@ npm test
 npm run dev
 ```
 
+Run `npm run test:achievements` for achievement-unlock and notification-queue unit tests. These tests use Node's built-in test runner and an injected fake clock, with no real sleeps, browser, database, or extra dependencies. `npm test` includes them automatically.
+
+`evaluateAchievementUnlocks(state, event)` returns `{ state, newlyUnlocked }` without changing the legacy `unlockAchievements()` or saved-state shape. `achievement-notifications.mjs` provides a tested, DOM-independent FIFO queue with show/hide callbacks, duplicate suppression, dismissal, and timer cleanup. The queue is not yet wired into `app.mjs`; badge-rarity styling, toast rendering, and achievement audio remain a separate UI update.
+
 Open `http://localhost:4173/?demo=1` to play without Telegram or server credentials. The preview server also honors `HOST` and `PORT` for hosted forwarding, and exposes the single-page route manifest at `/manus-routes.json`. Never use browser demo state as authoritative data.
 
 CI on the release branch runs `baseline`, `mobile-engines`, and `postgres-ledger`. The PostgreSQL integration job provisions disposable test storage and checks all five cases, idempotent settlement and cross-instance state. The main branch has an active ruleset requiring all three checks.
