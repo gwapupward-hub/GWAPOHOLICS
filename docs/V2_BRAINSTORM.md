@@ -52,10 +52,26 @@ Tags used below:
 
 ## 6. Open questions for the session
 
-1. Which v2 pillar goes first: economy depth, PvP, or sensory?
+1. Which v2 pillar goes first: economy depth, PvP, or sensory? (Section 7 ranks the features: mini-games first, then group raids.)
 2. Is idle accrual a v2 requirement or an experiment?
 3. Which Telegram features are worth the review cost?
 4. Do the Telegram-only monetization rails in section F still hold?
+
+## 7. Direction ranking (recorded 2026-11-18)
+
+1. **High-stakes mini-games (Vault Crack) as the core loop.** Best fit with the tagline "Make the call. Own the consequences." Server-verifiable by replay, and no player-to-player value transfer.
+2. **Group Vault Boss raids as the social layer.** Gives competitive social pull without PvP transfers. The bounty pool is minted from a capped house budget.
+3. **Live-market seasons, reframed as Cycles.** A cheap retention lever. Keep the in-game modifiers only and drop market language.
+4. **Competitive async heists last.** The strongest viral pull and the highest risk: player-to-player loss, moderation, and D4. Decide after group raids test appetite, and after counsel and PvP review.
+
+## 8. Copy and wording rules (recorded 2026-11-18)
+
+- **No betting language.** "Day Trader" is replaced with "Overclocker". Avoid "bet" and "wager".
+- **No market or price language.** Avoid "whale", "pump", "bull", "bear", "ticker", "yield", "APY", and "staking".
+- **Pseudonymous opponents.** Use crew names, not real Telegram usernames, in any alert or message.
+- **Neutral notification copy.** No loss-pressure wording such as "you lost 25%... retaliate now." Opt-in only, with capped frequency.
+- **Shared pools need a D4 answer.** Moving value into a shared vault counts as a transfer. Use a non-transferable contribution counter, or wait for counsel.
+- **Naming.** Use "Cycles" for the 48-hour phases, because "SEASON 01" already labels the case files.
 
 ## Checks not yet done
 
