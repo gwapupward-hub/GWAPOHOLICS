@@ -8,7 +8,7 @@ need() { [[ -n "${!1:-}" ]] || fail "missing_$1"; }
 for k in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY B2_OBJECT_KEY B2_ARCHIVE_VERSION_ID \
          B2_CHECKSUM_VERSION_ID AGE_IDENTITY_FILE RESTORE_TEST_DATABASE_URL; do need "$k"; done
 [[ "${GWAP_CONFIRM_DISPOSABLE_RESTORE:-}" == "yes" ]] || fail "isolated_target_confirmation_required"
-[[ "$B2_OBJECT_KEY" =~ ^postgres/gwapoholics-preview-[0-9]{8}T[0-9]{6}Z-[0-9]+\.dump\.age$ ]] || fail "unrecognized_archive_key"
+[[ "$B2_OBJECT_KEY" =~ ^postgres/gwapoholics-(preview|recovery)-[0-9]{8}T[0-9]{6}Z-[0-9]+\.dump\.age$ ]] || fail "unrecognized_archive_key"
 [[ -f "$AGE_IDENTITY_FILE" && -r "$AGE_IDENTITY_FILE" ]] || fail "age_identity_unavailable"
 for cmd in aws age sha256sum pg_restore psql node date mktemp grep tr cut; do
   command -v "$cmd" >/dev/null || fail "missing_tool_$cmd"
