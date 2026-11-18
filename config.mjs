@@ -1,4 +1,4 @@
-// Public bot handle confirmed by the founder; never put BotFather API tokens in client code.
-// Private-beta branch only: point all onboarding links to the isolated test bot.
-// Restore the production handle before any approved release to main.
-export const BOT_USERNAME = "TestGwap_bot";
+// Recovery QA branch ONLY. Use the isolated @GwapRecovery_bot for browser-to-Telegram onboarding.
+// Do not merge this bot handle into the official game or the normal @TestGwap_bot branch.
+// BotFather credentials belong in the recovery Vercel project's server-side TELEGRAM_BOT_TOKEN.
+export const BOT_USERNAME = "GwapRecovery_bot";
