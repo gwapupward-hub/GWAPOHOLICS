@@ -36,6 +36,16 @@ test("gate page: start-at-zero promise, three plain rules, legacy-coins note, on
   assert.match(closed, /not open yet/i);
 });
 
+test("gate button always matches the server's next step (start / continue / enter hub)", async () => {
+  const h = harness({ store: fresh(), config, seed: 7 });
+  const graduated = await h.playRun(bestPath); // graduated, hub not entered yet
+  const enter = originGatePage(graduated);
+  assert.match(enter, /data-action="fh-enter-hub"/);
+  assert.equal(enter.includes("fh-start-run"), false);
+  const resumed = await h.send("origin_start_run"); // now a new run is open
+  assert.match(originGatePage(resumed), /data-action="fh-open-run"/);
+});
+
 test("hub shows identity, verified score, capital, graduation, five named goals and a clear next step", async () => {
   const { hub } = await hubFor(bestPath);
   const html = founderHubPage(hub, { name: "Ada" });

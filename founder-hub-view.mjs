@@ -49,6 +49,8 @@ export function originGatePage(state) {
       <div class="page-heading"><h1>THE ORIGIN<br><em>OPENS SOON.</em></h1><p>${esc(o.unavailableMessage || "Origin qualification is not open yet.")}</p></div>${FINE}</div>`;
   }
   const cta = state.nextStep?.action;
+  // The button must do what its label says for every server-provided next step, not only "start".
+  const ctaAction = { origin_start_run: "fh-start-run", enter_hub: "fh-enter-hub", open_origin: "fh-open-run" }[cta?.kind];
   return `<div class="fh-page page-enter"><div class="eyebrow with-line">FOUNDER ENTRY <span>THE BUSINESS UNDERWORLD</span></div>
     <div class="page-heading"><h1>START AT<br><em>ZERO.</em></h1><p>You begin with 0 G. Play five cinematic quests. Your verified Origin Score becomes your startup capital.</p></div>
     ${draftChip(state)}
@@ -58,7 +60,7 @@ export function originGatePage(state) {
       <li><b>3</b><span><strong>Replay as often as you like.</strong><small>Only a score above your personal best pays. A lower score never costs you.</small></span></li>
     </ol>
     <p class="fh-note">Played the original season? Your original coins stay exactly as they are and are completely separate from your founder capital.</p>
-    ${cta ? `<button class="arcade-button" data-action="fh-start-run">${esc(cta.label)} <b>→</b></button>` : ""}
+    ${cta && ctaAction ? `<button class="arcade-button" data-action="${ctaAction}">${esc(cta.label)} <b>→</b></button>` : ""}
     ${FINE}</div>`;
 }
 
