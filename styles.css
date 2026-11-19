@@ -671,3 +671,6 @@ html:not(.story-mode) .toast-host .toast{bottom:calc(82px + env(safe-area-inset-
   .fh-stats strong small { display:block; margin-top:3px; }
   .fh-identity { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
 }
+
+/* Deliver a single mobile tap directly to game controls while preserving pinch zoom. */
+button, summary, input, label { touch-action: manipulation; }

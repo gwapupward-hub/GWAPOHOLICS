@@ -10,6 +10,8 @@ async function firstDecision(engine,opts){
     viewport:opts.viewport,isMobile:true,hasTouch:true,deviceScaleFactor:2,
     reducedMotion:'reduce'
   });
+  // Exercise the immediate fallback layout without depending on external font latency.
+  if (engine === chromium) await ctx.route('https://fonts.googleapis.com/**', route => route.abort());
   const page=await ctx.newPage();
   const pageErrors=[];
   page.on('pageerror',e=>pageErrors.push(String(e)));
