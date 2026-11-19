@@ -1,5 +1,6 @@
 import { BOT_USERNAME } from "./config.mjs";
 import { createSensoryLayer } from "./sensory-layer.mjs";
+import { syncTelegramFrame } from "./telegram-frame.mjs";
 import { loadPlayerSettings, savePlayerSettings, isManuallySignedOut, setManualSignout, renderPlayerSettings, renderPrivacyPage, renderTermsPage } from "./player-settings.mjs";
 import { startTelegramSession, refreshPlayer, sendGameCommand, logoutTelegramSession } from "./server-client.mjs";
 import { homeNarrator, cinematicMotionClass, toggleCinematicMotion, storyMotionEnabled, storyStage, introPanel, decisionPanel, consequencePanel, resultPanel, resultScore } from "./cinematic-view.mjs";
@@ -83,9 +84,12 @@ function setupTelegram() {
     const syncViewport = () => {
       const h = tg.viewportStableHeight || tg.viewportHeight;
       if (h) document.documentElement.style.setProperty("--app-height", `${h}px`);
+      syncTelegramFrame(tg, document);
     };
     syncViewport();
-    tg.onEvent?.("viewportChanged", syncViewport);
+    for (const event of ["viewportChanged", "safeAreaChanged", "contentSafeAreaChanged", "fullscreenChanged"]) {
+      try { tg.onEvent?.(event, syncViewport); } catch { /* older Telegram clients */ }
+    }
     tg.BackButton?.onClick(() => {
       if (view === "privacy" || view === "terms") { changeView("settings"); return; }
       if (view === "settings") { changeView("home"); return; }
@@ -166,7 +170,7 @@ async function authenticatePlayer(){
     if(error?.stage==='game_load' && error?.status===503) {
       remoteFailure='Telegram verification could not finish loading the player account because this Preview game service is unavailable. An isolated test database connection is required for this branch. Your saved G progress has not been reset.';
     }else if(error?.stage==='telegram_auth' && error?.status===401) {
-      remoteFailure='Telegram could not verify this launch. Close this Mini App and reopen it through the correct test bot. Do not open the Preview URL directly in Safari.';
+      remoteFailure='Telegram verification failed. The Mini App and the Preview server must use the same bot token. Reopening will not help until the bot configuration is corrected.';
     }else if(error?.stage==='telegram_auth' && error?.status===403) {
       remoteFailure='The Preview rejected the sign-in request. Open the Mini App through its Telegram bot and try again.';
     }else if(error?.stage==='game_load' && error?.status===401) {
