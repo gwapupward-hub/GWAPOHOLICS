@@ -89,6 +89,8 @@ for (const [name,engine] of ENGINES) {
       assert.equal(await dialog.evaluate(el=>el.open),true);
       await page.keyboard.press('Escape');
       assert.equal(await dialog.evaluate(el=>el.open),false);
+      // Native dialogs queue their close event. Wait for its observable focus result.
+      await page.waitForFunction(() => document.activeElement?.matches('[data-action="settings-logout"]'), undefined, { timeout: 3000 });
       assert.equal(await opener.evaluate(el=>el===document.activeElement),true,'Escape restores opener focus');
       assert.equal(logoutCalls,0);
       await opener.click();
