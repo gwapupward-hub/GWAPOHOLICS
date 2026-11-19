@@ -84,8 +84,8 @@ npm run check && npm test                                   # unit tests; no dat
 GWAPOHOLICS_TEST_DATABASE_URL=postgresql://USER@127.0.0.1:PORT/gwapoholics_ci \
   node --test tests/integration/postgres-ledger.test.mjs     # v1, separate process
 GWAPOHOLICS_TEST_DATABASE_URL=... node --test tests/integration/postgres-founder.test.mjs
-# browser (needs `npm run dev` and `npm i --no-save playwright`)
-node --test tests/browser/founder-origin.e2e.mjs
+# browser (needs `npm run dev` and `npm i --no-save playwright`); CI runs Chromium AND WebKit in a pinned Playwright image
+BROWSER_ENGINES=chromium node --test tests/browser/*.e2e.mjs   # default engines: chromium,webkit
 ```
 `tests/support/founder-suite.mjs` is one behavioural suite run against both an in-memory store and real Postgres, so the two cannot drift.
 
@@ -96,4 +96,4 @@ node --test tests/browser/founder-origin.e2e.mjs
 - The 30 commands/60 s budget counts only successful commands (as in v1); failed-request floods need the ingress WAF.
 - No expiry for abandoned open runs; `v2_command_receipts` and telemetry have no purge job yet.
 - `founder_goal_viewed` is a server impression, not a render confirmation.
-- Local WebKit (iPhone engine) browser test could not run in this sandbox (Chromium only); CI installs it. No manual Telegram/device QA was done (deferred to the end-of-v2.1 gate by instruction).
+- WebKit (iPhone engine) cannot run in every sandbox; CI runs it in a pinned Playwright image (see `V2_1A_SPRINT1_READINESS.md`). No manual Telegram/device QA was done (deferred to the end-of-v2.1 gate by instruction).

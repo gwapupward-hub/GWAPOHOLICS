@@ -177,6 +177,14 @@ export function defineFounderSuite(label, factory) {
     assert.equal((await env.counts()).settlements, 5);
     assert.equal(floor.origin.finalizedRuns, 5);
     assert.equal(floor.origin.lifetimeCreditedG, top, "lifetime grants equal the personal best, not the sum of replays");
+    // capital telemetry: exactly one event per settlement, outcome-consistent with the ledger, never duplicated
+    const capitalEvents = (await env.telemetry()).filter((e) => e.eventName === "origin_capital_credit_committed");
+    assert.equal(capitalEvents.length, 5, "one capital event per finalized run, zero-delta runs included");
+    assert.equal(capitalEvents.filter((e) => e.properties.outcome === "credited").length, (await env.ledgerRows()).length, "credited events == ledger rows");
+    assert.equal(capitalEvents.filter((e) => e.properties.outcome === "no_improvement").length, 3);
+    assert.equal(capitalEvents.reduce((sum, e) => sum + e.properties.creditDeltaG, 0), top, "event deltas sum to the personal best");
+    assert.equal(new Set(capitalEvents.map((e) => e.dedupeKey)).size, 5);
+    assert.equal(new Set(capitalEvents.map((e) => e.sourceRef)).size, 5, "each event points at a different (pseudonymous) run");
     await env.assertReconciled();
   });
 
@@ -190,12 +198,15 @@ export function defineFounderSuite(label, factory) {
     for (const c of path.slice(0, 3)) await h.send("origin_choose", { caseId: last, choiceId: c });
     const args = { caseId: last, choiceId: path[3], requestId: "final-choice-req" };
     const first = await h.send("origin_choose", args);
+    const eventsAfterSettlement = (await env.telemetry()).length;
     const retry = await h.send("origin_choose", args);
     assert.deepEqual(retry, first);
+    assert.equal((await env.telemetry()).length, eventsAfterSettlement, "a retried request emits no telemetry");
     assert.equal((await env.ledgerRows()).length, 1);
     await assert.rejects(() => h.send("origin_choose", { caseId: last, choiceId: path[3] }), (e) => e.code === "no_open_run");
     await assert.rejects(() => h.send("origin_start_quest", { caseId: last }), (e) => e.code === "no_open_run");
     await assert.rejects(() => h.send("origin_choose", { ...args, choiceId: path[2] }), (e) => e.code === "request_id_conflict");
+    assert.equal((await env.telemetry()).length, eventsAfterSettlement, "rejected duplicates emit no telemetry");
     assert.equal((await env.ledgerRows()).length, 1);
     assert.equal((await env.counts()).settlements, 1);
     await env.assertReconciled();
