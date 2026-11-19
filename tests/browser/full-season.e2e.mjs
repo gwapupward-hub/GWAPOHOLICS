@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chromium} from 'playwright';
+import {ENGINES,launch} from './engines.mjs';
 
 const BASE=process.env.GWAPOHOLICS_E2E_URL||'http://127.0.0.1:4173/?demo=1';
 const QUESTS=['streaming-pivot','brand-backlash','supply-shock','founder-runway','inflation-trap'];
@@ -30,8 +30,8 @@ async function finishQuest(page,id){
  const loaded=await source.evaluate(el=>el.complete&&el.naturalWidth>0);
  assert.ok(loaded,id+' result art should load');
 }
-test('all five cinematic quests play to real endings and cannot farm replay rewards',async()=>{
- const browser=await chromium.launch({headless:true});
+for(const engine of ENGINES)test(`[${engine.name}] all five cinematic quests play to real endings and cannot farm replay rewards`,async()=>{
+ const browser=await launch(engine);
  try{
   const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
   const page=await context.newPage();
@@ -56,8 +56,8 @@ test('all five cinematic quests play to real endings and cannot farm replay rewa
   await context.close();
  }finally{await browser.close();}
 });
-test('small phone preserves bottom control reachability and reduced-motion narration',async()=>{
- const browser=await chromium.launch({headless:true});
+for(const engine of ENGINES)test(`[${engine.name}] small phone preserves bottom control reachability and reduced-motion narration`,async()=>{
+ const browser=await launch(engine);
  try{
   const context=await browser.newContext({viewport:{width:360,height:700},reducedMotion:'reduce'});
   const page=await context.newPage();

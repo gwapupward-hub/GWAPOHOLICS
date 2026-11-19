@@ -194,7 +194,7 @@ export function founderHubPage(state, { name = "Founder" } = {}) {
   const faceBase = CHARACTER_ART["future-you"].image;
   const line = heroLine(state);
   const next = state.nextStep;
-  return `<div class="fh-page page-enter">
+  return `<div class="fh-page page-enter"><h1 class="sr-only">Founder Hub</h1>
     <section class="fh-hero" aria-label="Founder Hub">
       ${picture(heroBase, "fh-hero-art", 896)}<div class="fh-hero-shade" aria-hidden="true"></div>
       <div class="fh-cast">

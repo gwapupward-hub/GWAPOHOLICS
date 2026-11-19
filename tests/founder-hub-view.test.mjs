@@ -49,6 +49,8 @@ test("gate button always matches the server's next step (start / continue / ente
 test("hub shows identity, verified score, capital, graduation, five named goals and a clear next step", async () => {
   const { hub } = await hubFor(bestPath);
   const html = founderHubPage(hub, { name: "Ada" });
+  assert.equal((html.match(/<h1[ >]/g) || []).length, 1, "exactly one page heading for assistive tech");
+  assert.match(html, /<h1 class="sr-only">Founder Hub<\/h1>/);
   assert.match(html, /FOUNDER<\/small><strong>Ada</);
   assert.match(html, new RegExp(hub.founder.code));
   assert.match(html, /GRADUATED/);
