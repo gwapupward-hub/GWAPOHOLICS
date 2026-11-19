@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chromium} from 'playwright';
+import {ENGINES,launch} from './engines.mjs';
 import {createGame,startCase,chooseStep,completeChain} from '../../game-core.mjs';
 import {publicGameView} from '../../server/game-service.mjs';
 
@@ -16,8 +16,8 @@ function mockTelegram(){
   HapticFeedback:{impactOccurred(){},notificationOccurred(){}}
  }};
 }
-test('authenticated player uses server authority for all four moves and resumes without local coin storage',async()=>{
- const browser=await chromium.launch({headless:true});
+for(const engine of ENGINES)test(`[${engine.name}] authenticated player uses server authority for all four moves and resumes without local coin storage`,async()=>{
+ const browser=await launch(engine);
  try{
   let game=createGame(NOW,12345),writes=[],sessionCalls=0;
   const context=await browser.newContext({viewport:{width:390,height:844},reducedMotion:'reduce'});
