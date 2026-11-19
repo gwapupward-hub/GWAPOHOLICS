@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { createSensoryLayer, IMPACT_THROTTLE_MS, normalizeSensorySettings } from "../sensory-layer.mjs";
+import { createSensoryLayer, IMPACT_THROTTLE_MS, normalizeSensorySettings, cinematicTempo, CINEMATIC_TEMPOS_BPM } from "../sensory-layer.mjs";
 
 class FakeTarget {
   listeners = new Map();
@@ -49,7 +49,12 @@ function fakeEnv({ saved = null, telegram = null, denied = false } = {}) {
   doc.querySelector = () => null;
   const win = new FakeTarget();
   win.performance = { now: () => 1000 };
-  win.setInterval = () => { win.scheduled = (win.scheduled ?? 0) + 1; return 1; };
+  win.intervals = [];
+  win.setInterval = (_fn, delay) => {
+    win.scheduled = (win.scheduled ?? 0) + 1;
+    win.intervals.push(delay);
+    return win.scheduled;
+  };
   win.clearInterval = () => { win.cleared = (win.cleared ?? 0) + 1; };
   win.localStorage = {
     getItem() { if (denied) throw new Error("storage denied"); return saved; },
@@ -202,4 +207,67 @@ test("storage failures and absent audio/haptic APIs never interrupt gameplay", (
     layer.onConfirmedOutcome(0, "no-audio");
   });
   layer.dispose();
+});
+
+test("original string score increases tempo after each confirmed choice", () => {
+  assert.deepEqual(CINEMATIC_TEMPOS_BPM, [64, 78, 94, 112, 136]);
+  const env = fakeEnv();
+  const layer = createSensoryLayer({ document: env.doc, window: env.win, AudioContext: FakeAudioContext });
+  assert.equal(layer.resume(), true);
+  assert.equal(layer.tempoBpm, 64);
+  assert.equal(env.win.intervals.at(-1), Math.round(60000 / 64));
+  for (let move = 1; move <= 4; move++) {
+    assert.equal(layer.setDecisionProgress(move, 4, "mission-1"), CINEMATIC_TEMPOS_BPM[move]);
+    assert.equal(layer.tempoBpm, CINEMATIC_TEMPOS_BPM[move]);
+    assert.equal(env.win.intervals.at(-1), Math.round(60000 / CINEMATIC_TEMPOS_BPM[move]));
+  }
+  assert.equal(layer.setDecisionProgress(4, 4, "mission-1"), 136, "duplicate completion cannot increase tempo");
+  assert.equal(layer.setDecisionProgress(0, 4, "mission-2"), 64, "new mission resets the build");
+  layer.dispose();
+});
+test("story changes derive urgency from visible confirmed decision progress", () => {
+  const env = fakeEnv();
+  const layer = createSensoryLayer({ document: env.doc, window: env.win, AudioContext: FakeAudioContext });
+  layer.onSceneStep({ key: "streaming-pivot:beat:2", phase: "consequence", progress: { done: 2, total: 4 } }, "background");
+  assert.equal(layer.tempoBpm, 94);
+  assert.equal(layer.mood, "tension");
+  layer.onSceneStep({ key: "streaming-pivot:decide:2", phase: "decision", progress: { done: 2, total: 4 } }, "background");
+  assert.equal(layer.tempoBpm, 94);
+  layer.onSceneStep({ key: "streaming-pivot:result", phase: "result", delta: -1, progress: { done: 4, total: 4 } }, "background");
+  assert.equal(layer.mood, "resolve", "setback results do not falsely claim a win");
+  layer.dispose();
+});
+test("original celebration fanfare begins at result reveal, once per settled event", () => {
+  const env = fakeEnv();
+  const layer = createSensoryLayer({ document: env.doc, window: env.win, AudioContext: FakeAudioContext });
+  layer.resume();
+  const ctx = FakeAudioContext.latest;
+  const before = ctx.oscillatorCount;
+  assert.equal(layer.onConfirmedOutcome(300, "mission:confirmed"), true);
+  assert.equal(ctx.oscillatorCount, before, "no spoiler sound before money appears");
+  assert.equal(layer.onResultReveal(300, "mission:result"), true);
+  assert.ok(ctx.oscillatorCount > before + 6, "multi-note layered victory fanfare created");
+  const after = ctx.oscillatorCount;
+  assert.equal(layer.onResultReveal(300, "mission:result"), false);
+  assert.equal(ctx.oscillatorCount, after, "no second fanfare on duplicate render");
+  layer.setSettings({ music: false, effects: false });
+  const muted = ctx.oscillatorCount;
+  assert.equal(layer.onResultReveal(900, "mission:muted"), true);
+  assert.equal(ctx.oscillatorCount, muted, "both settings off means silence");
+  layer.dispose();
+});
+test("loss result plays an encouraging resolution rather than the victory fanfare", () => {
+  const env = fakeEnv();
+  const layer = createSensoryLayer({ document: env.doc, window: env.win, AudioContext: FakeAudioContext });
+  layer.resume();
+  assert.equal(layer.onResultReveal(-50, "mission:loss"), true);
+  assert.equal(layer.mood, "resolve");
+  layer.dispose();
+});
+test("score pacing is bounded and invalid input does not create unbounded scheduling", () => {
+  assert.equal(cinematicTempo(-9, 4), 64);
+  assert.equal(cinematicTempo(9999, 4), 136);
+  assert.equal(cinematicTempo(NaN, 4), 64);
+  assert.equal(cinematicTempo(2, 0), 136);
+  assert.equal(cinematicTempo(0, 4), 64);
 });

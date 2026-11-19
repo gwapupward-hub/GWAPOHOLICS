@@ -51,3 +51,7 @@ Do not silently reuse a production database or move restored data to solve the s
 - The Preview's isolated Neon DATABASE_URL remains scoped only to the same feature branch and contains the preserved snapshot. The bot token alone does not change any database records.
 - Telegram fullscreen now tracks safeAreaInset and contentSafeAreaInset and reacts to viewport, safe-area, and fullscreen events. Regular menus reserve clearance for the Telegram status bar / floating close menu, while cinematic scene art remains edge-to-edge with its controls in the safe region.
 - Recheck on a physical iPhone in fullscreen Telegram, including narrator, decision buttons, login/error states, volume controls, signed-out screen and bottom navigation. Browser WebKit tests are supplementary, not a substitute.
+
+## November 19 Preview bot configuration
+
+The owner configured `TELEGRAM_BOT_TOKEN` scoped to Preview branch `feature/v2-1-player-settings-menu`; the existing shared token previously identified as @GwapRecovery_bot must not be used to validate @TestGwap_bot launches. Redeploy the exact branch commit after the new secret is saved. Do not put actual Telegram credentials or signed initData in code, tickets, logs, browser responses, or chat. Verify only the public bot username with a sanitized temporary server-side getMe check and remove that check before acceptance.

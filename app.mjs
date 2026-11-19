@@ -415,7 +415,7 @@ function storyShot(entry) {
     const result = visibleResult(entry, run);
     const direction = sceneDirection(entry.id, "result", { band: result.band });
     const scene = narrativeScene(entry.id, "result", { band: result.band });
-    return { ...base, key: `${entry.id}:result`, phase: "result", direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
+    return { ...base, key: `${entry.id}:result`, phase: "result", delta: run.delta, direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
       lines: [scene.line, `Lesson: ${entry.takeaway}`], overlay: resultScore(run.delta),
       panel: resultPanel({ run, result, next: playableCases(game)[0], locked: isLocked(game) }),
       label: `${entry.title}: result`, ribbon: ribbon(direction), progress: { label: "MISSION COMPLETE", total, done: total, current: -1 } };
@@ -512,7 +512,13 @@ function applyStoryStep(step) {
   const order = [...SCENE_STEPS, ...EXIT_STEPS];
   const reached = order.indexOf(step);
   order.forEach((name, i) => el.classList.toggle(`at-${name}`, i <= reached));
-  if (step === "enter" && story.countOnEnter) { story.countOnEnter = false; countUp(el.querySelector(".count-value"), true); }
+  if ((step === "enter" || step === "choices") && story.countOnEnter && story.currentShot?.phase === "result") {
+    story.countOnEnter = false;
+    // The result has already been confirmed by the game server or local simulation.
+    // Celebrate only as its displayed money/score begins the visual count.
+    sensory.onResultReveal(story.currentShot.delta ?? 0, story.currentShot.key);
+    if (step === "enter") countUp(el.querySelector(".count-value"), true);
+  }
   if (step === "typing") story.typer?.start();
   if (step === "choices") {
     if (story.countOnEnter) story.countOnEnter = false; // motion off: keep the static settled number
@@ -546,14 +552,22 @@ async function commitChoice(id) {
       if (game.played.some(run=>run.caseId===caseId)) {
         stage="result";countPending=true;
         sensory.onConfirmedOutcome(game.played.find((run) => run.caseId === caseId).delta, `v1:${caseId}`);
-      } else { stage="beat"; sensory.playEffect("confirm"); }
+      } else {
+        stage="beat";
+        sensory.setDecisionProgress(game.draft?.path?.length ?? 0, current.stages.length, caseId);
+        sensory.playEffect("confirm");
+      }
     } else {
       game = chooseStep(game, caseId, id);
       if (game.draft.path.length === current.stages.length) {
         game = completeChain(game, caseId);
         stage = "result";countPending=true;
         sensory.onConfirmedOutcome(game.played.find((run) => run.caseId === caseId).delta, `v1:${caseId}`);
-      } else { stage = "beat"; sensory.playEffect("confirm"); }
+      } else {
+        stage = "beat";
+        sensory.setDecisionProgress(game.draft?.path?.length ?? 0, current.stages.length, caseId);
+        sensory.playEffect("confirm");
+      }
       persist();
     }
     if (stage === "result") showToast("Mission complete. Review your results.", { optional: true });
@@ -620,7 +634,14 @@ function render(options = {}) {
   root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar(view === "founder" && founder ? { balance: founder.capital.balanceG, caption: "STARTUP CAPITAL" } : undefined)}<div class="prototype-tag"><span>◉</span> ${game.remote ? "VERIFIED TELEGRAM PLAYER · VIRTUAL COINS" : "PLAYTEST · LOCAL-ONLY COINS"} · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
   backButton();
   if (view === "founder") bindHubTypewriter();
-  if (countPending) { countPending = false; countUp(); }
+  if (countPending) {
+    countPending = false;
+    if (view === "scenario" && stage === "result") {
+      const resultRun = game.played.find((item) => item.caseId === caseId);
+      if (resultRun) sensory.onResultReveal(resultRun.delta, `v1:${caseId}:result`);
+    }
+    countUp();
+  }
 }
 
 /* ------------------------------------------------------------------------- *
@@ -693,7 +714,7 @@ function originStoryShot(entry) {
     const direction = sceneDirection(entry.id, "result", { band: row.result.band });
     const scene = narrativeScene(entry.id, "result", { band: row.result.band });
     const nextEntry = founderQuests().find((item) => !q.completed.some((c) => c.caseId === item.id));
-    return { ...base, key: `og:${entry.id}:result`, phase: "result", direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
+    return { ...base, key: `og:${entry.id}:result`, phase: "result", delta: row.scoreG ?? 0, direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
       lines: [scene.line, `Lesson: ${entry.takeaway}`], overlay: originScoreOverlay(row),
       panel: originQuestResultPanel({ row, state: founder, nextEntry }),
       label: `${entry.title}: Origin result`, ribbon: ribbon(direction), progress: { label: "QUEST COMPLETE", total, done: total, current: -1 } };
@@ -730,7 +751,7 @@ function graduationShot() {
   const max = founder.origin.policy.maxScoreG;
   const band = storyBandForScore(receipt.verifiedScoreG, max);
   const direction = sceneDirection("founder-runway", "result", { band });
-  return { balance: founder.capital.balanceG, balanceCaption: "Startup capital", key: `og:graduation:${receipt.runNumber}`, phase: "result", direction,
+  return { balance: founder.capital.balanceG, balanceCaption: "Startup capital", key: `og:graduation:${receipt.runNumber}`, phase: "result", delta: receipt.verifiedScoreG, direction,
     speaker: "future-you", emotion: direction.emotion, effect: direction.effect, lines: graduationLines(founder, replay),
     overlay: graduationOverlay(receipt.verifiedScoreG, max), panel: graduationPanel(founder, { replay }),
     label: replay ? "Replay verified" : "Origin verified", ribbon: replay ? "ORIGIN · REPLAY VERIFIED" : "ORIGIN · VERIFIED",
@@ -744,7 +765,11 @@ async function commitOriginChoice(id) {
     if (finished) {
       originStage = "result"; countPending = true;
       sensory.onConfirmedOutcome(1, `origin:${founder?.origin?.openRun?.runNumber ?? 0}:${originCaseId}`);
-    } else { originStage = "beat"; sensory.playEffect("confirm"); }
+    } else {
+      originStage = "beat";
+      sensory.setDecisionProgress(founder?.quest?.draft?.round ?? 0, 4, `og:${originCaseId}`);
+      sensory.playEffect("confirm");
+    }
     render();
   } catch (error) { showToast(error.message); await resyncFounder(); }
   finally { moveBusy = false; }
@@ -896,7 +921,10 @@ root.addEventListener("click", async (event) => {
       if (stage === "result") {
         const run = game.played.find((item) => item.caseId === caseId);
         if (run) sensory.onConfirmedOutcome(run.delta, `v1:${caseId}`);
-      } else sensory.playEffect("confirm");
+      } else {
+        sensory.setDecisionProgress(game.draft?.path?.length ?? 0, entry.stages.length, caseId);
+        sensory.playEffect("confirm");
+      }
       haptic("medium");
       if (stage === "result") showToast("Mission complete. Review your results.", { optional: true });
       render();
