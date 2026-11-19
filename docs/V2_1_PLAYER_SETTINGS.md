@@ -37,3 +37,9 @@ This Preview contains no data export/deletion endpoint or finalized public Priva
 - [ ] Obtain owner/legal approval for final policies before public deployment.
 
 Run npm run check and npm test. This feature does not authorize a production deployment, backend migration, or merging PR #52.
+
+## Known Preview sign-in environment gate
+
+The isolated Vercel project `gwapoholics-tests` currently has a branch-restricted `DATABASE_URL` for a **different recovery-testing branch**, not for `feature/v2-1-player-settings-menu`. The settings Preview therefore serves the HTML but its `GET /api/game` returns HTTP 503 (`game_service_unavailable`). Telegram credentials cannot by themselves repair this.
+
+Do not silently reuse a production database or move restored data to solve the sign-in problem. The owner must choose or authorize an isolated, correctly migrated Preview database for the feature branch, confirm that `TELEGRAM_BOT_TOKEN` belongs to the bot that launches the Mini App, and ensure a stable Preview origin is actually configured in BotFather. Until then, authenticated play on this Preview is gated. The client reports the game-service failure separately from a Telegram signature error.

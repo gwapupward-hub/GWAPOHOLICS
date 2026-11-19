@@ -23,3 +23,29 @@ test('a failed logout rejects so the UI retains the authenticated session', asyn
     fetcher: async () => ({ ok: false, status: 503 })
   }), /Secure game service unavailable/);
 });
+
+test('distinguish Telegram authentication from missing Preview player service', async () => {
+  const { startTelegramSession } = await import('../server-client.mjs');
+  const calls = [];
+  const fetcher = async (url) => {
+    calls.push(url);
+    if (url === '/api/session') return { ok: true, status: 200 };
+    return { ok: false, status: 503 };
+  };
+  await assert.rejects(startTelegramSession('signed-demo-telegram-data', { fetcher }), (error) => {
+    assert.equal(error.stage, 'game_load');
+    assert.equal(error.status, 503);
+    return true;
+  });
+  assert.deepEqual(calls, ['/api/session', '/api/game']);
+});
+test('distinguish invalid Telegram bot signature or expired launch', async () => {
+  const { startTelegramSession } = await import('../server-client.mjs');
+  await assert.rejects(startTelegramSession('signed-demo-telegram-data', {
+    fetcher: async () => ({ok: false, status: 401})
+  }), (error) => {
+    assert.equal(error.stage, 'telegram_auth');
+    assert.equal(error.status, 401);
+    return true;
+  });
+});

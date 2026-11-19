@@ -30,6 +30,7 @@ const explicitDemo = new URLSearchParams(location.search).get("demo") === "1";
 const canPlay = isTelegram || localPreview || explicitDemo;
 const remoteRequested = isTelegram && !explicitDemo;
 let remoteStatus = remoteRequested ? (isManuallySignedOut() ? "signedOut" : "connecting") : "demo";
+let remoteFailure = '';
 let pendingCommand = null;
 
 const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -154,13 +155,25 @@ async function resyncRemote(){
   catch{showToast('Connection interrupted. Confirmed progress is saved on the server.')}
 }
 async function authenticatePlayer(){
+  remoteFailure='';
   remoteStatus='connecting';render();
   try{
     game=await startTelegramSession(tg?.initData);
     setManualSignout(false);
     remoteStatus='ready';view='home';caseId=null;stage='brief';
-  }catch{
+  }catch(error){
     remoteStatus='failed';
+    if(error?.stage==='game_load' && error?.status===503) {
+      remoteFailure='Telegram verification could not finish loading the player account because this Preview game service is unavailable. An isolated test database connection is required for this branch. Your saved G progress has not been reset.';
+    }else if(error?.stage==='telegram_auth' && error?.status===401) {
+      remoteFailure='Telegram could not verify this launch. Close this Mini App and reopen it through the correct test bot. Do not open the Preview URL directly in Safari.';
+    }else if(error?.stage==='telegram_auth' && error?.status===403) {
+      remoteFailure='The Preview rejected the sign-in request. Open the Mini App through its Telegram bot and try again.';
+    }else if(error?.stage==='game_load' && error?.status===401) {
+      remoteFailure='The game session did not persist. Close and reopen this Mini App inside Telegram.';
+    }else {
+      remoteFailure='This Preview cannot complete secure sign-in. The player data service or Telegram authentication may be unavailable; your saved progress has not been reset.';
+    }
   }
   render();
   if(remoteStatus==='ready')loadFounder();
@@ -574,8 +587,8 @@ function render(options = {}) {
     leaveStory();
     const msg=remoteStatus==='connecting'
       ? 'Verifying your Telegram account and retrieving your progress.'
-      : 'Secure sign-in is unavailable. Your virtual coins have not changed.';
-    root.innerHTML='<main class="app-shell"><div class="app-inner"><section class="arcade-flow page-enter" style="padding:28px 18px"><h1 class="arcade-title">GWAPOHOLICS.</h1><p class="arcade-hook">'+msg+'</p><button class="arcade-button" data-action="auth-retry">RETRY SECURE SIGN-IN →</button><p class="arcade-fine">For local playtesting only use ?demo=1. Demo coins do not become live account coins.</p></section></div></main>';
+      : remoteFailure || 'Secure sign-in is unavailable. Your virtual coins have not changed.';
+    root.innerHTML='<main class="app-shell"><div class="app-inner"><section class="arcade-flow page-enter" style="padding:28px 18px"><h1 class="arcade-title">GWAPOHOLICS.</h1><p class="arcade-hook">'+esc(msg)+'</p><button class="arcade-button" data-action="auth-retry">RETRY SECURE SIGN-IN →</button><p class="arcade-fine">For local playtesting only use ?demo=1. Demo coins do not become live account coins.</p></section></div></main>';
     return;
   }
   if (!canPlay) { leaveStory(); root.innerHTML = `<main class="app-shell"><div class="app-inner">${gatePage()}</div></main>`; return; }

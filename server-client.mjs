@@ -4,7 +4,11 @@
  * in localStorage. Credentials are HttpOnly and automatically sent by browser.
  */
 function requireSuccess(response){
- if(!response?.ok)throw new Error(response?.status===401?'Telegram session expired':response?.status===429?'Too many actions. Please try again in one minute.':'Secure game service unavailable');
+ if(!response?.ok){
+  const error=new Error(response?.status===401?'Telegram session expired':response?.status===429?'Too many actions. Please try again in one minute.':'Secure game service unavailable');
+  error.status=response?.status||0;
+  throw error;
+ }
  return response;
 }
 function authorizedHeaders(){return {'Content-Type':'application/json','X-GWAP-Request':'1'};}
@@ -32,8 +36,9 @@ export async function startTelegramSession(rawInitData,{fetcher=fetch}={}){
   method:'POST',credentials:'same-origin',cache:'no-store',
   headers:authorizedHeaders(),body:JSON.stringify({initData:rawInitData})
  });
- requireSuccess(a);
- return refreshPlayer({fetcher});
+ try { requireSuccess(a); } catch (error) { error.stage='telegram_auth'; throw error; }
+ try { return await refreshPlayer({fetcher}); }
+ catch (error) { error.stage='game_load'; throw error; }
 }
 export async function refreshPlayer({fetcher=fetch}={}){
  const r=await fetcher('/api/game',{method:'GET',credentials:'same-origin',cache:'no-store'});
