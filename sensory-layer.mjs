@@ -303,6 +303,7 @@ export function createSensoryLayer({
     hapticSelection() { return hapticEvent("selectionChanged"); },
     playEffect,
     resume() { return ensureAudio(); },
+    pause() { stopMusic(); try { void context?.suspend?.().catch?.(() => {}); } catch { /* optional */ } },
     dispose() { disposed = true; stopMusic(); listeners.splice(0).forEach((remove) => remove()); try { void context?.close?.(); } catch { /* optional */ } }
   };
 }

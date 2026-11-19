@@ -816,7 +816,7 @@ root.addEventListener("click", async (event) => {
       pendingCommand = null; pendingFounderCommand = null;
       founder = null; founderEnabled = false;
       game = createGame(); setManualSignout(true); remoteStatus = "signedOut"; view = "home"; caseId = null; originCaseId = null;
-      leaveStory(); render();
+      leaveStory(); sensory.pause(); render();
     } catch (error) {
       button.disabled = false;
       showToast("Could not end the session. Please try again.");

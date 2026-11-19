@@ -60,3 +60,10 @@
 @media (prefers-reduced-motion:reduce) {
   .settings-toggle input[type="checkbox"],.settings-toggle input[type="checkbox"]::after { transition:none; }
 }
+
+@media (max-width:370px) {
+  .topbar.arcade-top .arcade-mark { width:34px; height:34px; }
+  .topbar.arcade-top .brand-lockup { gap:6px; min-width:0; }
+  .topbar.arcade-top .arcade-wordmark strong { font-size:20px; }
+  .topbar.arcade-top .arcade-wordmark small { font-size:7px; letter-spacing:.08em; }
+}
