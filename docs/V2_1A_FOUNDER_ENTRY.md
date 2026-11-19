@@ -79,7 +79,7 @@ Identity only from the signed cookie; the body cannot name an account, run, scor
 ## 8. Running the tests
 
 ```bash
-npm run check && npm test                                   # 167 unit tests, no database or browser needed
+npm run check && npm test                                   # unit tests; no database or browser needed
 # real PostgreSQL (disposable DB named gwapoholics_ci; needs CREATE DATABASE for the rollback test)
 GWAPOHOLICS_TEST_DATABASE_URL=postgresql://USER@127.0.0.1:PORT/gwapoholics_ci \
   node --test tests/integration/postgres-ledger.test.mjs     # v1, separate process
