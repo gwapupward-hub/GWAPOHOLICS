@@ -7,7 +7,8 @@ const founder = ['v2_schema_meta','v2_founders','v2_founder_telegram_accounts','
   'v2_origin_quest_results','v2_origin_qualification','v2_capital_accounts','v2_capital_credit_ledger',
   'v2_origin_settlements','v2_reputation_events','v2_telemetry_events','v2_command_receipts','v2_businesses'];
 const business = ['v2_capital_debit_ledger','v2_founder_decisions'];
-const known = new Set([...legacy, ...founder, ...business]);
+const operations = ['v2_operating_cycles','v2_capacity_upgrades'];
+const known = new Set([...legacy, ...founder, ...business, ...operations]);
 const counts = new Map();
 let section = null;
 
@@ -28,9 +29,12 @@ for await (const line of createInterface({ input: process.stdin, crlfDelay: Infi
   counts.set(section, 0);
 }
 
-const hasBusiness = business.some(name => counts.has(name));
-const hasFounder = hasBusiness || founder.some(name => counts.has(name));
-const expected = [...legacy, ...(hasFounder ? founder : []), ...(hasBusiness ? business : [])];
+const expectedVersion = Number(process.argv[2] ?? 1);
+if (![1,2,3,4].includes(expectedVersion)) throw new Error("Unknown source schema generation");
+const hasOperations = expectedVersion >= 4 || operations.some(name => counts.has(name));
+const hasBusiness = expectedVersion >= 3 || hasOperations || business.some(name => counts.has(name));
+const hasFounder = expectedVersion >= 2 || hasBusiness || founder.some(name => counts.has(name));
+const expected = [...legacy, ...(hasFounder ? founder : []), ...(hasBusiness ? business : []), ...(hasOperations ? operations : [])];
 if (section !== null || expected.some(name => !counts.has(name)) || legacy.some(name => !counts.get(name)) ||
     (hasFounder && !counts.get('v2_schema_meta'))) {
   console.error('::error::Archive has incomplete schema sections or missing required game data.');

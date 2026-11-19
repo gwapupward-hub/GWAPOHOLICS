@@ -13,7 +13,7 @@ DECLARE
   has_business boolean;
 BEGIN
   IF to_regclass('public.v2_schema_meta') IS NULL THEN
-    IF current_setting('gwap.require_founder_schema', true) = 'yes' OR current_setting('gwap.require_business_schema', true) = 'yes'
+    IF current_setting('gwap.require_operations_schema', true) = 'yes' OR current_setting('gwap.require_founder_schema', true) = 'yes' OR current_setting('gwap.require_business_schema', true) = 'yes'
       OR EXISTS (SELECT FROM pg_tables WHERE schemaname='public' AND left(tablename,3)='v2_') THEN
       RAISE EXCEPTION 'Missing founder schema marker';
     END IF;
@@ -32,6 +32,12 @@ BEGIN
     RAISE EXCEPTION 'Missing business migration record';
   ELSE
     guards := array_append(guards,'v2_businesses_insert_disabled');
+  END IF;
+  IF EXISTS (SELECT FROM public.v2_schema_meta WHERE migration='004_v2_operating_cycles') THEN
+    required_tables := required_tables || ARRAY['v2_operating_cycles','v2_capacity_upgrades'];
+    guards := guards || ARRAY['v2_operating_cycles_append_only','v2_capacity_upgrades_append_only'];
+  ELSIF current_setting('gwap.require_operations_schema',true)='yes' OR to_regclass('public.v2_operating_cycles') IS NOT NULL OR to_regclass('public.v2_capacity_upgrades') IS NOT NULL THEN
+    RAISE EXCEPTION 'Missing operating migration record';
   END IF;
   FOREACH item IN ARRAY required_tables LOOP
     EXECUTE format('SELECT count(*) FROM public.%I',item) INTO n;

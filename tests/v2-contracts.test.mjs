@@ -17,12 +17,13 @@ const SECRET = "s".repeat(40);
 const FOUNDER = "11111111-1111-4111-8111-111111111111";
 const UUID = "22222222-2222-4222-8222-222222222222";
 
-test("business opening has a verified event and operating losses remain reserved", () => {
+test("business opening and the first settled loss have bounded event contracts", () => {
   assert.deepEqual(ACTIVE_EVENT_NAMES, [
     "session_started", "founder_first_login", "origin_quest_completed", "origin_run_finalized",
-    "origin_capital_credit_committed", "founder_entered_v2", "founder_goal_viewed", "first_company_opened"
+    "origin_capital_credit_committed", "founder_entered_v2", "founder_goal_viewed", "first_company_opened", "first_operating_loss"
   ]);
-  assert.deepEqual(RESERVED_EVENT_NAMES, ["first_operating_loss"]);
+  assert.deepEqual(RESERVED_EVENT_NAMES, []);
+  assert.throws(() => validateEventProperties("first_operating_loss", { amount: 1 }), /not allowed/);
   for (const name of RESERVED_EVENT_NAMES) {
     assert.throws(() => validateEventProperties(name, {}), /reserved and cannot be emitted yet/);
     assert.throws(() => buildTelemetryEvent({

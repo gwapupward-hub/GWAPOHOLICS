@@ -29,11 +29,12 @@ else{
       console.error('Missing per-player, per-case settlement uniqueness index');process.exitCode=1;
     }else console.log('GWAPOHOLICS Preview database schema: present and settlement uniqueness index verified.');
    }
-   if (process.env.GWAP_V2_FOUNDER_HUB === "1" || process.env.GWAP_V2_FIRST_BUSINESS_SCHEMA === "1") {
+   if (process.env.GWAP_V2_FOUNDER_HUB === "1" || process.env.GWAP_V2_FIRST_BUSINESS_SCHEMA === "1" || process.env.GWAP_V2_OPERATIONS_SCHEMA === "1") {
     await c.query("BEGIN READ ONLY");
     try {
      await c.query("SET LOCAL gwap.require_founder_schema='yes'");
      if (process.env.GWAP_V2_FIRST_BUSINESS_SCHEMA === "1") await c.query("SET LOCAL gwap.require_business_schema='yes'");
+     if (process.env.GWAP_V2_OPERATIONS_SCHEMA === "1") await c.query("SET LOCAL gwap.require_operations_schema='yes'");
      await c.query(await readFile(new URL("./verify-founder-schema.sql",import.meta.url),"utf8"));
      console.log("Founder schema and ledger reconciliation verified.");
     } finally { await c.query("ROLLBACK"); }

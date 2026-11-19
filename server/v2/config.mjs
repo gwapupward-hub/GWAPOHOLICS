@@ -15,7 +15,7 @@ import { getOriginPolicy, isPolicyApproved } from "./origin-policy.mjs";
  *                                               show unapproved illustrative business
  *                                               prices in previews (default: hidden)
  */
-import { approvedStarterOffer } from "./business-templates.mjs";
+import { BUSINESS_TEMPLATES, approvedStarterOffer } from "./business-templates.mjs";
 
 const ACK = "isolated-preview-only";
 
@@ -37,10 +37,14 @@ export function loadV2Config(env = process.env) {
   const key = env.GWAP_V2_ANALYTICS_KEY;
   const analyticsKey = typeof key === "string" && Buffer.byteLength(key, "utf8") >= 32 ? key : null;
 
+  const businessSchemaEnabled = env.GWAP_V2_FIRST_BUSINESS_SCHEMA === "1";
+  const operationsSchemaEnabled = businessSchemaEnabled && env.GWAP_V2_OPERATIONS_SCHEMA === "1";
+  const starterOffer = businessSchemaEnabled && !production ? approvedStarterOffer() : null;
+  const template = BUSINESS_TEMPLATES.find(t => t.businessTypeId === starterOffer?.businessTypeId);
   return Object.freeze({
     founderHubEnabled,
-    businessSchemaEnabled: env.GWAP_V2_FIRST_BUSINESS_SCHEMA === "1",
-    starterOffer: env.GWAP_V2_FIRST_BUSINESS_SCHEMA === "1" && !production ? approvedStarterOffer() : null,
+    businessSchemaEnabled, starterOffer, operationsSchemaEnabled,
+    operatingPolicy: operationsSchemaEnabled ? template?.economics.operatingPolicy ?? null : null,
     policy,
     policyUnavailableReason,
     analyticsKey,

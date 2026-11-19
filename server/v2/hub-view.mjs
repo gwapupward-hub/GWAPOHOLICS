@@ -14,6 +14,8 @@ export function founderCode(founderId) {
   return "F-" + String(founderId).replace(/-/g, "").slice(0, 8).toUpperCase();
 }
 
+import { operatingPolicyFor, operatingChoices } from "./operations.mjs";
+
 function unavailableCopy(reason) {
   return reason === "policy_unapproved"
     ? "Origin scoring is awaiting approval, so qualification is closed for now."
@@ -112,6 +114,12 @@ export function buildFounderSnapshot({ config, bundle }) {
   } else if (entered && !openRun && offer && capital.balanceG >= threshold) {
     nextStep = { id: "open_first_business", title: "Open your first business", body: "Review the setup cost and the cash you will keep on hand.", action: { kind: "preview_businesses", label: "REVIEW OPENING TERMS" } };
   }
+  const operations = bundle.operations;
+  const operatingPolicy = operations && operatingPolicyFor(bundle.business, config.operatingPolicy);
+  const goalReceipts = [];
+  if (bundle.business) goalReceipts.push("company_opened");
+  if (operations?.history.length) goalReceipts.push("operating_cycle_completed");
+  if (operations?.everProfitable) goalReceipts.push("profitable_decision_recorded");
   const base = {
     contract: V2_CONTRACTS.hubSnapshot,
     enrolled: true,
@@ -149,7 +157,14 @@ export function buildFounderSnapshot({ config, bundle }) {
     ...base,
     hub: {
       goalLadderVersion: GOAL_LADDER_VERSION,
-      goals: deriveGoals({ graduated, openRunQuestsCompleted: openRun ? openRun.results.length : 0, questCount, receipts: bundle.business ? ["company_opened"] : [] }),
+      goals: deriveGoals({ graduated, openRunQuestsCompleted: openRun ? openRun.results.length : 0, questCount, receipts: goalReceipts }),
+      operations: operations && { ...operations, offer: operatingPolicy ? {
+        version: operatingPolicy.version, cycleNumber: (operations.history[0]?.cycleNumber ?? 0) + 1,
+        capacity: operations.upgrades.reduce((n,u)=>n+u.extraCapacity,operatingPolicy.capacity),
+        upgrade: operations.history.length && operatingPolicy.upgrade && !operations.upgrades.some(u=>u.upgradeId === operatingPolicy.upgrade.id)
+          ? { ...operatingPolicy.upgrade, affordable: capital.balanceG >= operatingPolicy.upgrade.costG } : null,
+        nextAt: operations.history[0]?.nextAt ?? null, choices: operatingChoices(operatingPolicy)
+      } : null },
       business: bundle.business ?? null,
       openingOffer: !bundle.business && offer ? { ...offer, supplierDecision: SUPPLIER_DECISION, affordable: capital.balanceG >= threshold } : null,
       businessPreviews: previewBusinessTemplates({ showIllustrativeEconomics: config.showIllustrativeEconomics }),

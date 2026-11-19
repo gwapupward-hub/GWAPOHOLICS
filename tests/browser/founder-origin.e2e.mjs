@@ -4,7 +4,7 @@ import {createGame,isShifted} from '../../game-core.mjs';
 import {publicGameView} from '../../server/game-service.mjs';
 import {executeFounderCommand,FounderError} from '../../server/v2/founder-service.mjs';
 import {createMemoryFounderStore} from '../support/memory-founder-store.mjs';
-import {config,baseEnv} from '../support/founder-suite.mjs';
+import {config,baseEnv,operationsFixture} from '../support/founder-suite.mjs';
 import {QUEST_IDS,bestPath,worstPath,harness} from '../support/origin-play.mjs';
 import {loadV2Config} from '../../server/v2/config.mjs';
 import {CASES} from '../../cases.mjs';
@@ -222,7 +222,7 @@ for(const engine of ENGINES){
  });
 
  t('first company: review terms, confirm supplier, recover a lost response and reopen the receipt',async()=>{
-  const cfg={...config,businessSchemaEnabled:true,starterOffer:{businessTypeId:'barbershop',version:1,name:'Barbershop',setupCostG:17,minimumOperatingReserveG:5}};
+  const cfg={...config,businessSchemaEnabled:true,operationsSchemaEnabled:true,operatingPolicy:operationsFixture,starterOffer:{businessTypeId:'barbershop',version:1,name:'Barbershop',setupCostG:17,minimumOperatingReserveG:5}};
   const {browser,page,store,posts,pageErrors}=await open(engine,{cfg,graduate:true});
   try{
    await page.setViewportSize({width:320,height:640});
@@ -248,6 +248,17 @@ for(const engine of ENGINES){
    assert.ok((await page.getByRole('region',{name:'Your business'}).innerText()).includes(company.transactionId));
    assert.equal(store.db.businesses.size,1);
    await noHorizontalScroll(page);
+   await page.unroute('**/api/v2/founder');
+   await page.getByRole('button',{name:/limited stock/i}).click();
+   await page.locator('#cycle-receipt').waitFor();
+   assert.match(await page.getByRole('region',{name:/business operations/i}).innerText(),/Revenue 15 G − costs 7 G = 8 G/);
+   await page.reload(); await openFounderTab(page);
+   assert.match(await page.getByRole('region',{name:/business operations/i}).innerText(),/7 XP/);
+   await page.getByRole('button',{name:/expand capacity/i}).click();
+   await page.getByText(/capacity expansion ·/i).waitFor();
+   await page.reload(); await openFounderTab(page);
+   assert.equal(await page.getByRole('button',{name:/expand capacity/i}).count(),0);
+   assert.match(await page.getByRole('region',{name:/business operations/i}).innerText(),/serve up to 6 units/i);
    assert.deepEqual(pageErrors,[]);
   }finally{await browser.close()}
  });

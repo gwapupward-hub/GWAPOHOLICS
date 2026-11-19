@@ -117,6 +117,37 @@ export function createPostgresFounderStore(pool, { commandBudget = DEFAULT_BUDGE
             await q(`INSERT INTO v2_founder_decisions (decision_id,business_id,founder_id,policy_version,choice_id,occurred_at)
               VALUES ($1,$2,$3,$4,$5,${TS(6)})`, [decision.id, businessId, founderId, decision.version, decision.choiceId, now]);
           },
+          async getOperations(founderId) {
+            const result = await q(`SELECT transaction_id, cycle_number, policy_version, choice_id, supplier,
+                units_sold, unit_price_g, cost_g, revenue_g, balance_before_g, balance_after_g, xp,
+                sum(xp) OVER () AS total_xp, bool_or(revenue_g > cost_g) OVER () AS ever_profitable,
+                ${MS("settled_at","settled")}, ${MS("next_at","next_at_ms")}
+              FROM v2_operating_cycles WHERE founder_id=$1 ORDER BY cycle_number DESC LIMIT 10`, [founderId]);
+            const history = result.rows.map(r => ({ transactionId:r.transaction_id, cycleNumber:r.cycle_number,
+              policyVersion:r.policy_version, choiceId:r.choice_id, supplier:r.supplier,
+              unitsSold:num(r.units_sold), unitPriceG:num(r.unit_price_g), costG:num(r.cost_g), revenueG:num(r.revenue_g),
+              netG:num(r.revenue_g)-num(r.cost_g), balanceBeforeG:num(r.balance_before_g), balanceAfterG:num(r.balance_after_g),
+              xp:num(r.xp), settledAt:num(r.settled), nextAt:num(r.next_at_ms) }));
+            const stored = await q(`SELECT transaction_id,upgrade_id,policy_version,cost_g,extra_capacity,
+              balance_before_g,balance_after_g,${MS("occurred_at","occurred")} FROM v2_capacity_upgrades
+              WHERE founder_id=$1 ORDER BY occurred_at,transaction_id`,[founderId]);
+            const upgrades = stored.rows.map(r=>({ transactionId:r.transaction_id, upgradeId:r.upgrade_id,
+              policyVersion:r.policy_version, costG:num(r.cost_g), extraCapacity:r.extra_capacity,
+              balanceBeforeG:num(r.balance_before_g), balanceAfterG:num(r.balance_after_g), occurredAt:num(r.occurred) }));
+            return { history, upgrades, totalXp: num(result.rows[0]?.total_xp) ?? 0, everProfitable: result.rows[0]?.ever_profitable ?? false };
+          },
+          async recordUpgrade(founderId,businessId,r) {
+            await q(`INSERT INTO v2_capacity_upgrades (transaction_id,founder_id,business_id,upgrade_id,policy_version,
+              cost_g,extra_capacity,balance_before_g,balance_after_g,occurred_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${TS(10)})`,
+              [r.transactionId,founderId,businessId,r.upgradeId,r.policyVersion,r.costG,r.extraCapacity,r.balanceBeforeG,r.balanceAfterG,r.occurredAt]);
+          },
+          async recordCycle(founderId, businessId, r) {
+            await q(`INSERT INTO v2_operating_cycles (transaction_id,founder_id,business_id,cycle_number,policy_version,
+              choice_id,supplier,units_sold,unit_price_g,cost_g,revenue_g,balance_before_g,balance_after_g,xp,settled_at,next_at)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,${TS(15)},${TS(16)})`,
+              [r.transactionId,founderId,businessId,r.cycleNumber,r.policyVersion,r.choiceId,r.supplier,r.unitsSold,r.unitPriceG,
+               r.costG,r.revenueG,r.balanceBeforeG,r.balanceAfterG,r.xp,r.settledAt,r.nextAt]);
+          },
           async getOpenRun(founderId) {
             const r = await q(
               `SELECT origin_run_id, run_number, policy_version, seed, draft, ${MS("started_at", "started")}

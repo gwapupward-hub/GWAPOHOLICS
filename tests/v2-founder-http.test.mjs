@@ -203,3 +203,15 @@ test("api/v2/founder.js route: default OFF returns 404 and never needs a databas
     for (const k of keys) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; }
   }
 });
+
+test("business commands reject financial and ownership overrides before opening a transaction",async()=>{
+  const store = spyStore();
+  for (const command of ["business_open","operate","reinvest"]) {
+    for (const extra of [{ownerId:"other"},{balanceG:10},{xp:2},{revenueG:5},{settledAt:NOW},{setupCostG:0}]) {
+      const out=await post(store,{command,...extra});
+      assert.equal(out.statusCode,400);
+    }
+    assert.equal((await post(store,{command},{cookie:null})).statusCode,401);
+  }
+  assert.equal(store.calls.length,0);
+});

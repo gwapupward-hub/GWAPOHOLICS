@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import { createPostgresFounderStore } from "../../server/v2/postgres-founder-store.mjs";
 import { executeFounderCommand } from "../../server/v2/founder-service.mjs";
-import { config, defineFounderSuite } from "../support/founder-suite.mjs";
+import { config, defineFounderSuite, operationsFixture } from "../support/founder-suite.mjs";
 import { QUEST_IDS, bestPath, harness, worstPath } from "../support/origin-play.mjs";
 
 const database = process.env.GWAPOHOLICS_TEST_DATABASE_URL;
@@ -300,7 +300,7 @@ test("[postgres] migration 002 applies, is re-runnable, rolls back only v2 objec
   }
 });
 
-t("003 opening, supplier receipt, ownership, retries and gated rollback reconcile across sessions", async (env) => {
+t("003/004 transactions preserve ownership, operating capital, XP, upgrades and receipts across retries and rollback", async (env) => {
   const up = await read("003_v2_first_business.sql");
   const down = await read("003_v2_first_business.down.sql");
   const client = await env.pool.connect();
@@ -365,6 +365,67 @@ t("003 opening, supplier receipt, ownership, retries and gated rollback reconcil
     assert.equal(replay.capital.balanceG, stored.capital.balanceG);
     assert.deepEqual(replay.hub.business, stored.hub.business);
     await env.assertReconciled();
+    const operationsUp = await read("004_v2_operating_cycles.sql");
+    const operationsDown = await read("004_v2_operating_cycles.down.sql");
+    await client.query(operationsUp);
+    await client.query(operationsUp);
+    await client.query(operationsDown);
+    assert.deepEqual((await a.snapshot()).hub.business,stored.hub.business);
+    await client.query(operationsUp);
+    const active = { ...openingConfig, operationsSchemaEnabled:true, operatingPolicy:operationsFixture };
+    const operator = account(env.store,active);
+    const otherOperator = account(await env.reconnect(),active);
+    const sell = { cycleNumber:1, policyVersion:1, choiceId:"small", requestId:"first-cycle" };
+    const poorTerms = { ...operationsFixture, options:operationsFixture.options.map(o=>({...o,overheadG:snap.capital.balanceG})) };
+    await assert.rejects(account(env.store,{...active,operatingPolicy:poorTerms}).send("operate",sell), {code:"insufficient_capital"});
+    await assert.rejects(account(exhausted,active).send("operate",sell), {code:"rate_limited"});
+    assert.equal((await operator.snapshot()).hub.operations.history.length,0);
+    const [first, retry] = await Promise.all([operator.send("operate",sell),otherOperator.send("operate",sell)]);
+    assert.deepEqual(first,retry);
+    assert.equal(first.capital.balanceG,stored.capital.balanceG+8);
+    assert.equal(first.hub.operations.totalXp,7);
+    await assert.rejects(operator.send("operate",{...sell,requestId:"stale"}),{code:"cycle_changed"});
+    const stockUp = {cycleNumber:2, policyVersion:1, choiceId:"large"};
+    await assert.rejects(operator.send("operate",stockUp),{code:"cycle_wait"});
+    operator.advance(60000);
+    const loss = await operator.send("operate",stockUp);
+    assert.equal(loss.hub.operations.history[0].netG,-18);
+    assert.equal(loss.capital.balanceG,first.capital.balanceG-18);
+    assert.equal(loss.hub.operations.totalXp,7);
+    assert.equal(loss.hub.goals.find(g=>g.id==="profitable_decision").status,"completed");
+    assert.equal((await env.telemetry()).filter(e=>e.eventName==="first_operating_loss").length,1);
+    await assert.rejects(client.query(operationsDown),/rollback refused/);
+    await client.query("ROLLBACK");
+    const reopened = await otherOperator.snapshot();
+    assert.deepEqual(reopened.hub.operations.history,loss.hub.operations.history);
+    const afterReplay = await operator.playRun(bestPath);
+    assert.equal(afterReplay.capital.balanceG,loss.capital.balanceG);
+    assert.equal(afterReplay.hub.operations.totalXp,7);
+    const expand={choiceId:"capacity",policyVersion:1};
+    const expansion=await operator.send("reinvest",{...expand,requestId:"expand"});
+    const expansionRetry=await otherOperator.send("reinvest",{...expand,requestId:"expand"});
+    assert.deepEqual(expansion,expansionRetry);
+    assert.equal(expansion.hub.operations.offer.capacity,6);
+    assert.equal(expansion.capital.balanceG,afterReplay.capital.balanceG-9);
+    await assert.rejects(otherOperator.send("reinvest",expand),{code:"already_upgraded"});
+    assert.equal((await operator.snapshot()).hub.operations.upgrades.length,1);
+    // Non-live agreement seam. Resolve each side from its own authenticated store context.
+    const inspectParty = uid => env.store.transaction(uid,async tx => {
+      const founder = await tx.findFounder();
+      const business = await tx.getBusiness(founder.founderId);
+      const {balanceG} = await tx.getCapital(founder.founderId);
+      return {founderId:founder.founderId,businessId:business?.businessId ?? null,balanceG};
+    });
+    const parties = await Promise.all(["4200000001","4200000002"].map(inspectParty));
+    const [owner,counterparty] = parties;
+    assert.notEqual(owner.founderId,counterparty.founderId);
+    const mockTerms = {businessId:stored.hub.business.businessId,requiredG:owner.balanceG};
+    const assesses = party => party.businessId === mockTerms.businessId && party.balanceG >= mockTerms.requiredG;
+    assert.equal(assesses(owner),true);
+    assert.equal(assesses(counterparty),false);
+    assert.deepEqual(await Promise.all(["4200000001","4200000002"].map(inspectParty)),parties);
+    await env.assertReconciled();
+    await client.query(checkSchema);
     await assert.rejects(client.query(down), /rollback refused/);
     await client.query("ROLLBACK");
     assert.deepEqual((await otherInstance.snapshot()).hub.business, stored.hub.business);

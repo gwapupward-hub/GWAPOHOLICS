@@ -7,6 +7,8 @@ import { buildReputationEvent } from "./reputation-contract.mjs";
 import { classifyCapital, entryCapitalThresholdG, SUPPLIER_DECISION } from "./business-templates.mjs";
 import { GOAL_LADDER_VERSION, GOAL_DEFINITIONS } from "./goals.mjs";
 
+import { operatingPolicyFor, settleCycle } from "./operations.mjs";
+
 export { FounderError };
 
 /**
@@ -22,7 +24,7 @@ export { FounderError };
  */
 export const SESSION_GAP_MS = 30 * 60 * 1000;
 const PRESENCE_WRITE_INTERVAL_MS = 60 * 1000;
-export const COMMANDS = Object.freeze(["snapshot", "origin_start_run", "origin_start_quest", "origin_choose", "enter_hub", "business_open"]);
+export const COMMANDS = Object.freeze(["snapshot", "origin_start_run", "origin_start_quest", "origin_choose", "enter_hub", "business_open", "operate", "reinvest"]);
 
 function requireIdentity(userId) {
   if (!/^[1-9][0-9]{0,18}$/.test(String(userId || ""))) throw new FounderError("identity_required", "Valid Telegram identity required", 401);
@@ -69,7 +71,8 @@ async function loadBundle(ctx) {
   const latest = await tx.getLatestRun(founder.founderId);
   const settlements = await tx.listSettlements(founder.founderId, 10);
   const business = ctx.config.businessSchemaEnabled && founder.enteredV2At ? await tx.getBusiness(founder.founderId) : null;
-  return { founder, qualification, capital, latest, settlements, business };
+  const operations = business && ctx.config.operationsSchemaEnabled ? await tx.getOperations(founder.founderId) : null;
+  return { founder, qualification, capital, latest, settlements, business, operations };
 }
 
 function capitalStatusOf(config, balanceG) {
@@ -244,8 +247,36 @@ async function openFirstBusiness(ctx, businessTypeId, templateVersion, choiceId)
   await emit(ctx, "first_company_opened", { properties: {}, sourceId: businessId });
 }
 
+async function manageBusiness(ctx, command, choiceId, cycleNumber, policyVersion) {
+  if (!ctx.config.operationsSchemaEnabled || !ctx.founder.enteredV2At) throw new FounderError("cycle_closed", "Operations unavailable", 409);
+  const founderId = ctx.founder.founderId;
+  const business = await ctx.tx.getBusiness(founderId);
+  const policy = operatingPolicyFor(business, ctx.config.operatingPolicy);
+  if (!policy) throw new FounderError("cycle_closed", "Operating terms unavailable", 409);
+  const state = await ctx.tx.getOperations(founderId);
+  const capital = await ctx.tx.getCapital(founderId);
+  if (command === "reinvest") {
+    const offer = policy.upgrade;
+    if (!offer || policy.version !== policyVersion || offer.id !== choiceId || !state.history.length)
+      throw new FounderError("upgrade_unavailable", "Review the current expansion terms", 409);
+    if (state.upgrades.some(u => u.upgradeId === offer.id))
+      throw new FounderError("already_upgraded", "This expansion is already saved", 409);
+    if (capital.balanceG < offer.costG) throw new FounderError("insufficient_capital", "Insufficient capital for expansion", 409);
+    const balanceAfterG = await ctx.tx.creditCapital({ founderId, deltaG: -offer.costG, now: ctx.now });
+    await ctx.tx.recordUpgrade(founderId,business.businessId,{ transactionId:randomUUID(), upgradeId:offer.id, policyVersion,
+      costG:offer.costG, extraCapacity:offer.extraCapacity, balanceBeforeG:capital.balanceG, balanceAfterG, occurredAt:ctx.now });
+    return;
+  }
+  const receipt = settleCycle({ business, policy, upgrades: state.upgrades, previous: state.history[0], capitalG: capital.balanceG,
+    choiceId, cycleNumber, policyVersion, now: ctx.now });
+  const balance = await ctx.tx.creditCapital({ founderId, deltaG: receipt.netG, now: ctx.now });
+  if (balance !== receipt.balanceAfterG) throw new Error("Cycle and capital balances disagree");
+  await ctx.tx.recordCycle(founderId, business.businessId, { ...receipt, transactionId: randomUUID() });
+  if (receipt.netG < 0) await emit(ctx, "first_operating_loss", { properties: {} });
+}
+
 export async function executeFounderCommand({
-  store, config, telegramUserId, command, requestId, caseId, choiceId, businessTypeId, templateVersion, now = Date.now(), newSeed = generateRunSeed
+  store, config, telegramUserId, command, requestId, caseId, choiceId, businessTypeId, templateVersion, cycleNumber, policyVersion, now = Date.now(), newSeed = generateRunSeed
 } = {}) {
   if (!config?.founderHubEnabled) throw new FounderError("not_found", "Not found", 404);
   const uid = requireIdentity(telegramUserId);
@@ -255,10 +286,10 @@ export async function executeFounderCommand({
   const mutating = command !== "snapshot";
   if (mutating) {
     requestId = requireId(requestId, "requestId", 96);
-    if (!config.policy) throw new FounderError("origin_unavailable", "Origin qualification is not open", 409);
+    if (!config.policy && command.startsWith("origin_")) throw new FounderError("origin_unavailable", "Origin qualification is not open", 409);
   }
   const hash = mutating
-    ? createHash("sha256").update(JSON.stringify({ command, caseId: caseId ?? null, choiceId: choiceId ?? null, ...(command === "business_open" ? { businessTypeId, templateVersion } : {}) })).digest("hex")
+    ? createHash("sha256").update(JSON.stringify({ command, caseId: caseId ?? null, choiceId: choiceId ?? null, ...(command === "business_open" ? { businessTypeId, templateVersion } : {}), ...(["operate","reinvest"].includes(command) ? { cycleNumber, policyVersion } : {}) })).digest("hex")
     : null;
 
   return store.transaction(uid, async (tx) => {
@@ -280,6 +311,7 @@ export async function executeFounderCommand({
       if (command === "origin_start_quest") await startQuestCommand(ctx, caseId);
       else if (command === "origin_choose") await chooseCommand(ctx, caseId, choiceId);
       else if (command === "business_open") await openFirstBusiness(ctx, businessTypeId, templateVersion, choiceId);
+      else if (command === "operate" || command === "reinvest") await manageBusiness(ctx, command, choiceId, cycleNumber, policyVersion);
       else await enterHubCommand(ctx);
     }
     const result = await snapshotOf(ctx, { impression: command === "enter_hub" });

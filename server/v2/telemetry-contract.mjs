@@ -65,7 +65,7 @@ export const EVENT_DEFINITIONS = deepFreeze({
     dedupe: "founder", properties: {}
   },
   first_operating_loss: {
-    status: "reserved", stage: "economy", emittedBy: "build 2.1-C, after the first verified negative net operating cycle commits",
+    status: "active", stage: "economy", emittedBy: "build 2.1-C, after the first verified negative net operating cycle commits",
     dedupe: "founder", properties: {}
   }
 });

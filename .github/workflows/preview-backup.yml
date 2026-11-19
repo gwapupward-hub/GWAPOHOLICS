@@ -71,6 +71,7 @@ jobs:
               fi
               echo "Verified populated Preview game tables; source checks passed."
               psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f /checks/verify-founder-schema.sql
+              psql "$DATABASE_URL" -XAt -v ON_ERROR_STOP=1 -c "SELECT CASE WHEN to_regclass(\$\$public.v2_operating_cycles\$\$) IS NOT NULL THEN 4 WHEN to_regclass(\$\$public.v2_capital_debit_ledger\$\$) IS NOT NULL THEN 3 WHEN to_regclass(\$\$public.v2_schema_meta\$\$) IS NOT NULL THEN 2 ELSE 1 END" >/out/schema-generation
               pg_dump --dbname="$DATABASE_URL" --schema=public --format=custom --no-owner --no-acl --file=/out/preview.dump
             '
           test -s "$RUNNER_TEMP/gwap-backup/preview.dump"
@@ -82,7 +83,7 @@ jobs:
             --mount "type=bind,src=$RUNNER_TEMP/gwap-backup,dst=/out,readonly" \
             postgres:18 \
             pg_restore --data-only --schema=public --file=- /out/preview.dump \
-            | node scripts/audit-backup-copy.mjs
+            | node scripts/audit-backup-copy.mjs "$(cat "$RUNNER_TEMP/gwap-backup/schema-generation")"
       - name: Encrypt and upload immutable backup
         shell: bash
         run: |

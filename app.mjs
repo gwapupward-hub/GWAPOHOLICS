@@ -690,7 +690,7 @@ async function openFounderHome() {
   if (fresh) founder = fresh;
   if (!founder) { changeView("home"); return; }
   const graduated = founder.origin?.graduation?.status === "graduated";
-  view = graduated && !founder.founder.enteredHub && !founder.origin.openRun ? "graduation" : "founder";
+  view = graduated && founder.quest && founder.origin.policy && !founder.founder.enteredHub && !founder.origin.openRun ? "graduation" : "founder";
   originCaseId = null; caseId = null; selectedChoice = null; haptic();
   render();
   if (view === "founder") window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
@@ -826,6 +826,22 @@ function handleFounderAction(action, button) {
     founderStep(async () => { founder = await founderCommand("enter_hub"); view = "founder"; haptic("medium"); render(); window.scrollTo({ top: 0 }); });
   } else if (action === "og-hub") {
     view = "founder"; render(); window.scrollTo({ top: 0 });
+  } else if (action === "fh-reinvest") {
+    founderStep(async () => {
+      founder = await founderCommand("reinvest", { choiceId: button.dataset.choice, policyVersion: Number(button.dataset.version) });
+      render();
+      root.querySelector("#cycle-receipt")?.focus();
+      announcer.textContent = "Your capacity expansion is saved.";
+    });
+  } else if (action === "fh-operate") {
+    founderStep(async () => {
+      founder = await founderCommand("operate", { choiceId: button.dataset.choice, cycleNumber: Number(button.dataset.cycle), policyVersion: Number(button.dataset.version) });
+      render();
+      const receipt = founder.hub.operations.history[0];
+      sensory.onConfirmedOutcome(receipt.netG, receipt.transactionId);
+      sensory.onResultReveal(receipt.netG, receipt.transactionId);
+      root.querySelector("#cycle-receipt")?.focus();
+    });
   } else if (action === "fh-open-business") {
     const choice = root.querySelector('input[name="supplier-choice"]:checked');
     if (!choice) { root.querySelector('input[name="supplier-choice"]')?.reportValidity(); return; }
@@ -859,6 +875,14 @@ root.addEventListener("click", async (event) => {
       dialog.addEventListener("close", () => {
         if (button.isConnected) button.focus({ preventScroll: true });
       }, { once: true });
+      // Touch WebViews need an explicit focused opener for native dialog focus restoration.
+      button.focus({ preventScroll: true });
+      dialog.onkeydown = event => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        dialog.close();
+        button.focus({ preventScroll: true });
+      };
       dialog.showModal();
       dialog.querySelector('[data-action="settings-logout-cancel"]')?.focus({ preventScroll: true });
     } else {

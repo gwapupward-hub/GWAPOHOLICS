@@ -180,6 +180,27 @@ function previewCard(p) {
     <em class="fh-chip">UPCOMING</em></li>`;
 }
 
+function operationsPanel(operations) {
+  if (!operations) return "";
+  const { offer, history, totalXp } = operations;
+  if (!offer && !history.length) return "";
+  return `<section class="fh-next" aria-label="Business operations"><small>BUSINESS OPERATIONS · ${fmt(totalXp)} XP</small>
+    ${offer ? `<h2>Plan cycle ${fmt(offer.cycleNumber)}</h2>
+      <p>Pay for stock and overhead before sales. You can serve up to ${fmt(offer.capacity)} units. Unsold stock brings in no revenue this cycle.</p>
+      ${offer.nextAt ? `<p>Next opening: ${esc(new Date(offer.nextAt).toLocaleString())}.</p>` : ""}
+      ${offer.choices.map(o=>`<button type="button" class="cta secondary" data-action="fh-operate"
+        data-choice="${esc(o.id)}" data-cycle="${offer.cycleNumber}" data-version="${offer.version}">${esc(o.label)} ·
+        stock ${fmt(o.stock)}, pay ${fmt(o.costG)} G, sell at ${fmt(o.unitPriceG)} G each</button>`).join("")}` : ""}
+    ${offer?.upgrade ? `<button type="button" class="cta secondary" data-action="fh-reinvest" data-choice="${esc(offer.upgrade.id)}"
+      data-version="${offer.version}" ${offer.upgrade.affordable ? "" : "disabled"}>Expand capacity by ${fmt(offer.upgrade.extraCapacity)} · pay ${fmt(offer.upgrade.costG)} G</button>` : ""}
+    ${operations.upgrades.map(u=>`<p>Capacity expansion · +${fmt(u.extraCapacity)} units · ${fmt(u.costG)} G paid · ${fmt(u.balanceAfterG)} G after purchase.</p>`).join("")}
+    ${history.length ? `<h3 tabindex="-1" id="cycle-receipt">Latest operating receipts</h3>
+      <ol>${history.map(r=>`<li>Cycle ${fmt(r.cycleNumber)} · ${fmt(r.unitsSold)} sold.
+        Because you chose ${r.supplier === "scheduled" ? "scheduled deliveries" : "flexible orders"}, the supplier served this cycle under those terms.
+        Revenue ${fmt(r.revenueG)} G − costs ${fmt(r.costG)} G = ${fmt(r.netG)} G.
+        Capital ${fmt(r.balanceAfterG)} G · ${fmt(r.xp)} XP earned.</li>`).join("")}</ol>` : ""}</section>`;
+}
+
 function receiptRow(r) {
   return `<li><span><strong>Run ${r.runNumber} · verified ${fmt(r.verifiedScoreG)}</strong><small>${r.outcome === "credited" ? `+${fmt(r.creditDeltaG)} G credited` : "No new capital (not above your best)"} · receipt ${esc(r.transactionId ? r.transactionId.slice(0, 8) : "none")}</small></span><b>${r.outcome === "credited" ? "+" + fmt(r.creditDeltaG) : "0"} G</b></li>`;
 }
@@ -224,6 +245,7 @@ export function founderHubPage(state, { name = "Founder" } = {}) {
       <p>Opening cost: ${fmt(business.setupCostG)} G · Capital after opening: ${fmt(business.balanceAfterG)} G.</p>
       <p>Supplier commitment: ${business.decision.choiceId === "scheduled" ? "Reserved delivery slot" : "Flexible orders"}. Your choice is saved for your next supplier conversation.</p>
       <small>Opening receipt ${esc(business.transactionId)}</small></section>` : ""}
+    ${operationsPanel(hub.operations)}
     ${offer ? `<details class="fh-receipts" id="fh-offer"><summary>Review ${esc(offer.name)} opening terms</summary>
       <p>Pay ${fmt(offer.setupCostG)} G once. Keep at least ${fmt(offer.minimumOperatingReserveG)} G in operating reserve.</p>
       <fieldset><legend>${esc(offer.supplierDecision.prompt)}</legend>

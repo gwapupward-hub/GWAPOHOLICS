@@ -663,3 +663,11 @@ html:not(.story-mode) .toast-host .toast{bottom:calc(82px + env(safe-area-inset-
 .fh-identity strong{font-size:15px;white-space:nowrap;overflow-wrap:normal}
 .fh-identity>div:first-child strong{white-space:normal;overflow-wrap:anywhere}
 .fh-graduated{font-size:14px!important;letter-spacing:.02em}
+
+.fh-stats { grid-template-columns:repeat(2,minmax(0,1fr)); }
+.fh-stats strong { white-space:normal; }
+@media (max-width:370px) {
+  .fh-stats strong { font-size:26px; }
+  .fh-stats strong small { display:block; margin-top:3px; }
+  .fh-identity { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+}
