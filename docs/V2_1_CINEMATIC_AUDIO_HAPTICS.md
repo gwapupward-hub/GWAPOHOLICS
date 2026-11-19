@@ -34,3 +34,12 @@ Before acceptance, use the isolated Preview / `@TestGwap_bot` only:
 - An original procedural score switches between menu, mission, tension, danger, victory, and Founder moods with a smoothed gain transition.
 - No external music recordings or samples are incorporated. The intended score is original code-created synthesis; confirm the musical result in Preview before release.
 - CI on the draft PR is the authoritative full repository test gate; physical iOS Telegram verification remains mandatory and Android remains pending if a device is not available.
+
+## Cinematic string escalation and result payoff
+
+- Original procedural bowed-string-like synthesis with two detuned oscillator layers and an optional low-pass filter; no external recording, loop, sample, or copyrighted composition.
+- Tempo follows only accepted game progress: **64 → 78 → 94 → 112 → 136 BPM** for zero through four committed choices. It resets for each new mission or Origin quest. Visual suspense never predicts or influences financial outcome.
+- The motif rises subtly as the player advances, giving urgency without a continuously loud alarm. Music remains independently muted or volume-limited through Settings; existing SFX and haptic opt-outs remain effective.
+- When a settled money/score result actually enters the visible screen, a short original layered-string victory fanfare plays once. Financial setbacks get an encouraging, dignified resolving phrase rather than a misleading win cue.
+- Presentation-only: no edits to server authority, coin settlement, quest scoring, wallets, ledger, or game state.
+- Follow-up QA: verify progression in Telegram iPhone headphones and speakers, timing against count-up animation and narrated dialogue, restart/foreground behavior, audio opt-out, keyboard/reduced motion, and a complete 4-decision quest.

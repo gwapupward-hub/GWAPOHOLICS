@@ -1,0 +1,34 @@
+/* Telegram fullscreen places native controls above web content.
+   Reserve only the native safe area on fullscreen launches; never shift
+   ordinary expanded Mini App or standalone browser layouts. */
+html.telegram-fullscreen .app-shell {
+  min-height:100dvh;
+  padding-top:var(--gwap-telegram-top,116px);
+  padding-bottom:var(--gwap-telegram-bottom,0px);
+}
+html.telegram-fullscreen .app-inner {
+  min-height:calc(100dvh - var(--gwap-telegram-top,116px) - var(--gwap-telegram-bottom,0px));
+}
+html.telegram-fullscreen .page-content {
+  min-height:0;
+  padding-bottom:calc(110px + max(var(--gwap-telegram-bottom,0px),env(safe-area-inset-bottom,0px)));
+}
+html.telegram-fullscreen .signed-out-page {
+  min-height:calc(100dvh - var(--gwap-telegram-top,116px) - var(--gwap-telegram-bottom,0px));
+}
+html.telegram-fullscreen .bottomnav {
+  padding-bottom:max(7px,var(--gwap-telegram-bottom,0px),env(safe-area-inset-bottom,0px));
+}
+html.telegram-fullscreen:not(.story-mode) .toast-host .toast {
+  bottom:calc(82px + max(var(--gwap-telegram-bottom,0px),env(safe-area-inset-bottom,0px)));
+}
+/* Story Mode draws art edge-to-edge, but the controls and narration remain
+   inside Telegram's tappable content area. */
+html.telegram-fullscreen .story-stage .stage-ui {
+  padding-top:calc(max(calc(var(--safe-t) + var(--tg-content-safe-area-inset-top,0px)), var(--gwap-telegram-top,116px)) + 8px);
+  padding-bottom:calc(max(var(--safe-b),var(--gwap-telegram-bottom,0px)) + 14px);
+}
+@media (max-height:700px) {
+  html.telegram-fullscreen .arcade-flow.page-enter { padding-top:12px!important; }
+  html.telegram-fullscreen .signed-out-page { justify-content:flex-start; }
+}

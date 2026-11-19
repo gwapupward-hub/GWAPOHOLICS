@@ -4,8 +4,8 @@ import {createGame,isShifted} from '../../game-core.mjs';
 import {publicGameView} from '../../server/game-service.mjs';
 import {executeFounderCommand,FounderError} from '../../server/v2/founder-service.mjs';
 import {createMemoryFounderStore} from '../support/memory-founder-store.mjs';
-import {config,baseEnv} from '../support/founder-suite.mjs';
-import {QUEST_IDS,bestPath,worstPath} from '../support/origin-play.mjs';
+import {config,baseEnv,operationsFixture} from '../support/founder-suite.mjs';
+import {QUEST_IDS,bestPath,worstPath,harness} from '../support/origin-play.mjs';
 import {loadV2Config} from '../../server/v2/config.mjs';
 import {CASES} from '../../cases.mjs';
 import {ENGINES,launch} from './engines.mjs';
@@ -28,11 +28,16 @@ function mockTelegram(){
  }};
 }
 // `probeStatus` and `postStatus` simulate authentication failures; `enabled:false` simulates the flag being off.
-async function open(engine,{enabled=true,seed=SEED,cfg=config,probeStatus=200,postStatus=0}={}){
+async function open(engine,{enabled=true,seed=SEED,cfg=config,probeStatus=200,postStatus=0,graduate=false}={}){
  const browser=await launch(engine);
  const context=await browser.newContext({viewport:{width:390,height:844},isMobile:true,hasTouch:true,deviceScaleFactor:2,reducedMotion:'reduce'});
  await context.addInitScript(mockTelegram);
  const store=createMemoryFounderStore({commandBudget:{limit:100000,windowSeconds:60}});
+ if (graduate) {
+  const founder = harness({store,config:cfg,telegramUserId:UID,seed});
+  await founder.playRun(bestPath);
+  await founder.send('enter_hub');
+ }
  const posts=[];let clock=NOW;
  await context.route('**/api/session',r=>r.fulfill({status:200,contentType:'application/json',body:'{"authenticated":true}'}));
  await context.route('**/api/game',r=>r.fulfill({status:200,contentType:'application/json',body:JSON.stringify({state:publicGameView(createGame(NOW,12345),NOW)})}));
@@ -213,6 +218,48 @@ for(const engine of ENGINES){
    }
    assert.ok(posts.length>=52,'25+1 commands per run, two runs, plus hub entry');
    assert.equal(pageErrors.length,0,pageErrors.join('\n'));
+  }finally{await browser.close()}
+ });
+
+ t('first company: review terms, confirm supplier, recover a lost response and reopen the receipt',async()=>{
+  const cfg={...config,businessSchemaEnabled:true,operationsSchemaEnabled:true,operatingPolicy:operationsFixture,starterOffer:{businessTypeId:'barbershop',version:1,name:'Barbershop',setupCostG:17,minimumOperatingReserveG:5}};
+  const {browser,page,store,posts,pageErrors}=await open(engine,{cfg,graduate:true});
+  try{
+   await page.setViewportSize({width:320,height:640});
+   await openFounderTab(page);
+   await page.getByRole('button',{name:/review opening terms/i}).click();
+   await page.getByRole('radio',{name:/reserve a delivery slot/i}).check();
+   // Let the server commit. Cut the response before the page receives it.
+   await page.route('**/api/v2/founder',async route=>{
+    if(route.request().method()==='GET') return route.fallback();
+    const input=route.request().postDataJSON();
+    posts.push(input);
+    await executeFounderCommand({store,config:cfg,telegramUserId:UID,now:NOW,...input});
+    await route.abort('failed');
+   });
+   await page.getByRole('button',{name:/confirm opening/i}).click();
+   await page.locator('#fh-company-name').waitFor();
+   const company=[...store.db.businesses.values()][0];
+   assert.equal(company.setupCostG,17);
+   assert.equal(company.decision.choiceId,'scheduled');
+   assert.equal(posts.filter(p=>p.command==='business_open').length,1);
+   assert.equal(await page.getByRole('button',{name:/confirm opening/i}).count(),0);
+   await page.reload(); await openFounderTab(page);
+   assert.ok((await page.getByRole('region',{name:'Your business'}).innerText()).includes(company.transactionId));
+   assert.equal(store.db.businesses.size,1);
+   await noHorizontalScroll(page);
+   await page.unroute('**/api/v2/founder');
+   await page.getByRole('button',{name:/limited stock/i}).click();
+   await page.locator('#cycle-receipt').waitFor();
+   assert.match(await page.getByRole('region',{name:/business operations/i}).innerText(),/Revenue 15 G − costs 7 G = 8 G/);
+   await page.reload(); await openFounderTab(page);
+   assert.match(await page.getByRole('region',{name:/business operations/i}).innerText(),/7 XP/);
+   await page.getByRole('button',{name:/expand capacity/i}).click();
+   await page.getByText(/capacity expansion ·/i).waitFor();
+   await page.reload(); await openFounderTab(page);
+   assert.equal(await page.getByRole('button',{name:/expand capacity/i}).count(),0);
+   assert.match(await page.getByRole('region',{name:/business operations/i}).innerText(),/serve up to 6 units/i);
+   assert.deepEqual(pageErrors,[]);
   }finally{await browser.close()}
  });
 

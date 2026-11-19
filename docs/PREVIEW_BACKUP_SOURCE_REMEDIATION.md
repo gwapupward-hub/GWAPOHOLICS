@@ -43,3 +43,9 @@ The report says a private age identity and a Neon connection string were provide
 ## Evidence policy
 
 **Only mark RECOVERY PASS** after successful restoration of **actual nonempty** application records from the exact independently verified B2 object version, zero game-ledger integrity mismatches, retention proof, and operator/founder sign-off. Until then, the recovery gate #30 and public launch gate #34 remain OPEN.
+
+## November 19 integration review
+
+[Scheduled run 44557934242](https://github.com/gwapupward-hub/GWAPOHOLICS/actions/runs/44557934242) passed configuration presence checks and failed the direct-endpoint check. Dump, encryption and upload were skipped. Neon endpoint metadata independently confirmed the approved direct host above still belongs to the designated Preview branch. The guard deliberately omits the configured hostname from logs, so the rejected source cannot be identified from this run.
+
+A maintainer with GitHub environment-secret access must replace `preview-backup` → `NEON_PREVIEW_BACKUP_DATABASE_URL` with the approved direct connection for `gwapoholics_backup_reader` on `neondb`. Use the secret-entry UI. Then run the encrypted backup and verify object retention and isolated recovery against that exact archive. The disposable CI restore covers game schema and data integrity separately.
