@@ -13,7 +13,7 @@ const jsonHeaders={
  'Referrer-Policy':'no-referrer',
  'Vary':'Cookie'
 };
-function send(res,status,body,cookie){
+export function send(res,status,body,cookie){
  res.statusCode=status;
  for(const [k,v] of Object.entries(jsonHeaders))res.setHeader(k,v);
  if(cookie)res.setHeader('Set-Cookie',cookie);
@@ -28,11 +28,11 @@ function sameOrigin(req){
   return url.protocol==='https:'&&url.host===host&&!url.username&&!url.password;
  }catch{return false}
 }
-function authorizedMutation(req){
+export function authorizedMutation(req){
  return sameOrigin(req)&&req.headers?.['x-gwap-request']==='1'&&
   /^application\/json(?:\s*;\s*charset=utf-8)?$/i.test(req.headers?.['content-type']||'');
 }
-async function jsonBody(req,maxBytes=17_000){
+export async function jsonBody(req,maxBytes=17_000){
  let size=0,parts=[];
  for await(const chunk of req){
   size+=chunk.length;if(size>maxBytes)throw new Error('Request too large');
@@ -42,7 +42,7 @@ async function jsonBody(req,maxBytes=17_000){
  if(!data||typeof data!=='object'||Array.isArray(data))throw new Error('Expected JSON object');
  return data;
 }
-function exactKeys(body,keys){
+export function exactKeys(body,keys){
  return Object.keys(body).every(k=>keys.includes(k));
 }
 export async function handleSession(req,res,{botToken,sessionSecret,now=Date.now()}={}){

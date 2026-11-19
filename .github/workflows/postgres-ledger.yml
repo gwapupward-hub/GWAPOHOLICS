@@ -36,3 +36,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Exercise real Postgres transactions with disposable test data
         run: node --test tests/integration/postgres-ledger.test.mjs
+      # v2.1-A Founder Entry: separate process (shares the disposable database), needs CREATE DATABASE
+      # for the scratch-database migration/rollback test (the CI user is the cluster superuser).
+      - name: Exercise v2 founder migration, settlement atomicity and concurrency on real Postgres
+        run: node --test tests/integration/postgres-founder.test.mjs

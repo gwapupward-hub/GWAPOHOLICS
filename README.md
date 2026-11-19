@@ -49,6 +49,10 @@ CI on the release branch runs `baseline`, `mobile-engines`, and `postgres-ledger
 
 See [Authenticated API](docs/AUTHENTICATED_API.md) for request contract and deployment constraints.
 
+## v2.1-A Founder Entry (Sprint 1, feature-flagged, default off)
+
+A server-authoritative Origin → Founder Hub foundation for The Business Underworld. Off unless `GWAP_V2_FOUNDER_HUB=1`; not applied to any database. See [developer guide](docs/V2_1A_FOUNDER_ENTRY.md), [review and conflict register](docs/V2_1A_SPRINT1_REVIEW.md), [event contracts](docs/V2_1A_EVENT_CONTRACTS.md), [migration and rollback](docs/V2_1A_MIGRATION_AND_ROLLBACK.md) the [Sprint 2 handoff](docs/V2_1A_SPRINT2_HANDOFF.md), the [seed-variance analysis](docs/V2_1A_SEED_VARIANCE.md) and the [readiness assessment](docs/V2_1A_SPRINT1_READINESS.md).
+
 ## Remaining release acceptance
 
 Physical iOS and Android Telegram WebView QA for all five quests, tested cross-device continuity, offsite backup/restore, ingress rate limiting and monitoring, a small private tester cohort, and separate approval for production infrastructure, domain and official bot. **Do not treat green CI or a READY Preview as permission for public release.**
