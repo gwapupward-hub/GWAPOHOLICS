@@ -133,6 +133,8 @@ pg_restore --dbname="$RESTORE_TEST_DATABASE_URL" \
   --schema=public --single-transaction --no-owner --no-acl --exit-on-error \
   ./backup.dump
 
+curl -fsSLo ./verify-founder-schema.sql \
+  "https://raw.githubusercontent.com/gwapupward-hub/GWAPOHOLICS/main/scripts/verify-founder-schema.sql"
 curl -fsSLo ./verify-restored-backup.sql \
   "https://raw.githubusercontent.com/gwapupward-hub/GWAPOHOLICS/main/scripts/verify-restored-backup.sql"
 

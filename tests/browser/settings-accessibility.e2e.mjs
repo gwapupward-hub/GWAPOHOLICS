@@ -74,6 +74,7 @@ for (const [name,engine] of ENGINES) {
       await context.route('**/api/logout',async r=>{
         logoutCalls++;
         assert.equal(r.request().method(),'POST');
+        if(logoutCalls===1) return r.fulfill({status:503,body:'{}'});
         await r.fulfill({status:200,contentType:'application/json',body:'{"authenticated":false}'});
       });
       const page=await context.newPage();
@@ -81,12 +82,15 @@ for (const [name,engine] of ENGINES) {
       await page.goto(BASE,{waitUntil:'domcontentloaded'});
       await page.locator('.prototype-tag').filter({hasText:'VERIFIED TELEGRAM PLAYER'}).waitFor();
       await page.locator('[data-action="nav"][data-view="settings"]').first().click();
+      const savedBalance=await page.locator('.arcade-wallet').innerText();
       const opener=page.locator('[data-action="settings-logout"]');
       await opener.click();
       const dialog=page.locator('#game-logout-dialog');
       assert.equal(await dialog.evaluate(el=>el.open),true);
       await page.keyboard.press('Escape');
       assert.equal(await dialog.evaluate(el=>el.open),false);
+      // Native dialogs queue their close event. Wait for its observable focus result.
+      await page.waitForFunction(() => document.activeElement?.matches('[data-action="settings-logout"]'), undefined, { timeout: 3000 });
       assert.equal(await opener.evaluate(el=>el===document.activeElement),true,'Escape restores opener focus');
       assert.equal(logoutCalls,0);
       await opener.click();
@@ -94,7 +98,10 @@ for (const [name,engine] of ENGINES) {
       assert.equal(logoutCalls,0,'Cancel does not clear signed session');
       await opener.click();
       await page.locator('[data-action="settings-logout-confirm"]').click();
-      assert.equal(logoutCalls,1);
+      await page.locator('.toast').filter({hasText:/could not end the session/i}).waitFor();
+      assert.equal(await dialog.evaluate(el=>el.open),true,'failed signout leaves the session usable');
+      await page.locator('[data-action="settings-logout-confirm"]').click();
+
       await page.getByRole('heading',{name:/session ended/i}).waitFor();
       await page.reload({waitUntil:'domcontentloaded'});
       await page.getByRole('heading',{name:/session ended/i}).waitFor();
@@ -102,6 +109,8 @@ for (const [name,engine] of ENGINES) {
       await page.getByRole('button',{name:/sign in with telegram/i}).click();
       await page.locator('.prototype-tag').filter({hasText:'VERIFIED TELEGRAM PLAYER'}).waitFor();
       assert.equal(sessionCalls,2);
+      assert.equal(logoutCalls,2);
+      assert.equal(await page.locator('.arcade-wallet').innerText(),savedBalance);
       assert.equal(await page.evaluate(()=>localStorage.getItem('gwapoholics.manual-signout.v1')),null);
       assert.equal(errors.length,0,errors.join('\n'));
       await context.close();

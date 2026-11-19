@@ -156,8 +156,10 @@ test("explicit scene events switch soundtrack moods without DOM observers", () =
   assert.equal(layer.mood, "mission");
   layer.onSceneStep({ key: "decision", phase: "decision" }, "background");
   assert.equal(layer.mood, "tension");
-  layer.onSceneStep({ key: "result", phase: "result", effect: "victory" }, "background");
+  layer.onSceneStep({ key: "result", phase: "result", delta: 100, effect: "victory" }, "background");
   assert.equal(layer.mood, "victory");
+  layer.onSceneStep({ key: "equal-replay", phase: "result", delta: 0 }, "background");
+  assert.equal(layer.mood, "resolve");
   layer.setMood("founder");
   assert.equal(layer.mood, "founder");
   layer.dispose();

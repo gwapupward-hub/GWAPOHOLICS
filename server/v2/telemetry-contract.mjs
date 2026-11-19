@@ -61,11 +61,11 @@ export const EVENT_DEFINITIONS = deepFreeze({
     properties: { goalsVersion: int(1, 100), goalCount: int(3, 5), basis: oneOf(["server_snapshot"]) }
   },
   first_company_opened: {
-    status: "reserved", stage: "activation", emittedBy: "build 2.1-B, after a company creation commits",
+    status: "active", stage: "activation", emittedBy: "build 2.1-B, after a company creation commits",
     dedupe: "founder", properties: {}
   },
   first_operating_loss: {
-    status: "reserved", stage: "economy", emittedBy: "build 2.1-C, after the first verified negative net operating cycle commits",
+    status: "active", stage: "economy", emittedBy: "build 2.1-C, after the first verified negative net operating cycle commits",
     dedupe: "founder", properties: {}
   }
 });

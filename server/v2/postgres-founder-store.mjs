@@ -87,6 +87,67 @@ export function createPostgresFounderStore(pool, { commandBudget = DEFAULT_BUDGE
             if (!r.rows[0]) throw new Error("Missing capital account");
             return { balanceG: num(r.rows[0].balance_g) };
           },
+          async getBusiness(founderId) {
+            const result = await q(`SELECT b.business_id, b.business_type_id, b.template_version, b.lifecycle_status,
+                s.decision_id, s.choice_id, s.policy_version, d.transaction_id, d.amount_g, d.reserve_g, d.balance_after_g, ${MS("d.occurred_at","opened")}
+              FROM v2_businesses b JOIN v2_capital_debit_ledger d USING (business_id)
+              JOIN v2_founder_decisions s USING (business_id)
+              WHERE b.owner_founder_id=$1`, [founderId]);
+            const row = result.rows[0];
+            return row ? {
+              businessId: row.business_id, businessTypeId: row.business_type_id, version: row.template_version,
+              decision: { id: row.decision_id, version: row.policy_version, choiceId: row.choice_id },
+              status: row.lifecycle_status, transactionId: row.transaction_id, setupCostG: num(row.amount_g),
+              minimumOperatingReserveG: num(row.reserve_g), balanceAfterG: num(row.balance_after_g), openedAt: num(row.opened)
+            } : null;
+          },
+          async openFirstBusiness({ founderId, businessId, offer, transactionId, decision, now }) {
+            const { setupCostG, minimumOperatingReserveG } = offer;
+            const debit = await q(`UPDATE v2_capital_accounts SET balance_g=balance_g-$2::bigint,
+                revision=revision+1, updated_at=${TS(4)}
+              WHERE founder_id=$1 AND balance_g >= $2::bigint+$3::bigint RETURNING balance_g`,
+              [founderId, setupCostG, minimumOperatingReserveG, now]);
+            if (!debit.rowCount) throw new FounderError("insufficient_capital", "Capital below setup plus reserve", 409);
+            await q(`INSERT INTO v2_businesses (business_id,owner_founder_id,business_type_id,template_version,lifecycle_status,created_at)
+              VALUES ($1,$2,$3,$4,'operating',${TS(5)})`, [businessId, founderId, offer.businessTypeId, offer.version, now]);
+            await q(`INSERT INTO v2_capital_debit_ledger
+              (transaction_id,business_id,founder_id,amount_g,reserve_g,balance_after_g,idempotency_key,occurred_at)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,${TS(8)})`,
+              [transactionId, businessId, founderId, setupCostG, minimumOperatingReserveG, debit.rows[0].balance_g, "open:"+businessId, now]);
+            await q(`INSERT INTO v2_founder_decisions (decision_id,business_id,founder_id,policy_version,choice_id,occurred_at)
+              VALUES ($1,$2,$3,$4,$5,${TS(6)})`, [decision.id, businessId, founderId, decision.version, decision.choiceId, now]);
+          },
+          async getOperations(founderId) {
+            const result = await q(`SELECT transaction_id, cycle_number, policy_version, choice_id, supplier,
+                units_sold, unit_price_g, cost_g, revenue_g, balance_before_g, balance_after_g, xp,
+                sum(xp) OVER () AS total_xp, bool_or(revenue_g > cost_g) OVER () AS ever_profitable,
+                ${MS("settled_at","settled")}, ${MS("next_at","next_at_ms")}
+              FROM v2_operating_cycles WHERE founder_id=$1 ORDER BY cycle_number DESC LIMIT 10`, [founderId]);
+            const history = result.rows.map(r => ({ transactionId:r.transaction_id, cycleNumber:r.cycle_number,
+              policyVersion:r.policy_version, choiceId:r.choice_id, supplier:r.supplier,
+              unitsSold:num(r.units_sold), unitPriceG:num(r.unit_price_g), costG:num(r.cost_g), revenueG:num(r.revenue_g),
+              netG:num(r.revenue_g)-num(r.cost_g), balanceBeforeG:num(r.balance_before_g), balanceAfterG:num(r.balance_after_g),
+              xp:num(r.xp), settledAt:num(r.settled), nextAt:num(r.next_at_ms) }));
+            const stored = await q(`SELECT transaction_id,upgrade_id,policy_version,cost_g,extra_capacity,
+              balance_before_g,balance_after_g,${MS("occurred_at","occurred")} FROM v2_capacity_upgrades
+              WHERE founder_id=$1 ORDER BY occurred_at,transaction_id`,[founderId]);
+            const upgrades = stored.rows.map(r=>({ transactionId:r.transaction_id, upgradeId:r.upgrade_id,
+              policyVersion:r.policy_version, costG:num(r.cost_g), extraCapacity:r.extra_capacity,
+              balanceBeforeG:num(r.balance_before_g), balanceAfterG:num(r.balance_after_g), occurredAt:num(r.occurred) }));
+            return { history, upgrades, totalXp: num(result.rows[0]?.total_xp) ?? 0, everProfitable: result.rows[0]?.ever_profitable ?? false };
+          },
+          async recordUpgrade(founderId,businessId,r) {
+            await q(`INSERT INTO v2_capacity_upgrades (transaction_id,founder_id,business_id,upgrade_id,policy_version,
+              cost_g,extra_capacity,balance_before_g,balance_after_g,occurred_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,${TS(10)})`,
+              [r.transactionId,founderId,businessId,r.upgradeId,r.policyVersion,r.costG,r.extraCapacity,r.balanceBeforeG,r.balanceAfterG,r.occurredAt]);
+          },
+          async recordCycle(founderId, businessId, r) {
+            await q(`INSERT INTO v2_operating_cycles (transaction_id,founder_id,business_id,cycle_number,policy_version,
+              choice_id,supplier,units_sold,unit_price_g,cost_g,revenue_g,balance_before_g,balance_after_g,xp,settled_at,next_at)
+              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,${TS(15)},${TS(16)})`,
+              [r.transactionId,founderId,businessId,r.cycleNumber,r.policyVersion,r.choiceId,r.supplier,r.unitsSold,r.unitPriceG,
+               r.costG,r.revenueG,r.balanceBeforeG,r.balanceAfterG,r.xp,r.settledAt,r.nextAt]);
+          },
           async getOpenRun(founderId) {
             const r = await q(
               `SELECT origin_run_id, run_number, policy_version, seed, draft, ${MS("started_at", "started")}

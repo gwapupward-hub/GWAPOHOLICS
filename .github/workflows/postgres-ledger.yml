@@ -40,3 +40,7 @@ jobs:
       # for the scratch-database migration/rollback test (the CI user is the cluster superuser).
       - name: Exercise v2 founder migration, settlement atomicity and concurrency on real Postgres
         run: node --test tests/integration/postgres-founder.test.mjs
+      - name: Restore populated founder economy into a fresh disposable database
+        env:
+          CI_POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: bash scripts/verify-ci-empire-restore.sh

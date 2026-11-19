@@ -237,7 +237,7 @@ export function createSensoryLayer({
     const identity = String(key || "unknown");
     if (revealedResults.has(identity)) return false;
     revealedResults.add(identity);
-    const won = Number(delta) >= 0;
+    const won = Number(delta) > 0;
     // The payoff waits until the confirmed money/score result actually enters view.
     // Positive outcomes get a bright original fanfare; setbacks resolve with dignity.
     if (settings.music && unlocked && context?.state === "running" && doc?.visibilityState !== "hidden") {
@@ -293,16 +293,16 @@ export function createSensoryLayer({
       const scope = parts[0] === "og" ? parts.slice(0, 2).join(":") : parts[0];
       setDecisionProgress(shot.progress?.done ?? 0, shot.progress?.total ?? 4, scope);
       const sceneMood = shot.phase === "decision" || shot.phase === "consequence" ? "tension" :
-        shot.phase === "result" ? (Number(shot.delta ?? 0) >= 0 ? "victory" : "resolve") : "mission";
+        shot.phase === "result" ? (Number(shot.delta ?? 0) > 0 ? "victory" : "resolve") : "mission";
       setMood(sceneMood);
     }
   }
   function onConfirmedOutcome(delta, eventKey) {
     if (eventKey && settledCues.has(eventKey)) return false;
     if (eventKey) settledCues.add(eventKey);
-    const good = Number(delta) >= 0;
+    const good = Number(delta) > 0;
     // Result music and success effects begin on money-reveal, not before render.
-    hapticEvent("notificationOccurred", good ? "success" : "warning");
+    if (delta !== 0) hapticEvent("notificationOccurred", good ? "success" : "warning");
     return true;
   }
   function onGesture() { ensureAudio(); }
