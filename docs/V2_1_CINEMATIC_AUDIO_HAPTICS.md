@@ -26,3 +26,11 @@ Before acceptance, use the isolated Preview / `@TestGwap_bot` only:
 3. Confirm supported Telegram haptics on choice, progress and result events; confirm no vibration when disabled or unsupported and no repeated buzz during rapid taps.
 4. Check headphones/speaker volume and that effects do not mask narration; test interrupted Web Audio context recovery and storage-denied mode.
 5. Confirm Preview-only build, no production deployment or bot setting changes. No merge or deployment is authorized by this implementation request.
+
+## Completion follow-up
+
+- Presentation integration is explicit through the scene director and confirmed settlement callback; no MutationObserver surveillance of gameplay DOM.
+- Telegram feedback uses one guarded controller rather than mutating Telegram's host API.
+- An original procedural score switches between menu, mission, tension, danger, victory, and Founder moods with a smoothed gain transition.
+- No external music recordings or samples are incorporated. The intended score is original code-created synthesis; confirm the musical result in Preview before release.
+- CI on the draft PR is the authoritative full repository test gate; physical iOS Telegram verification remains mandatory and Android remains pending if a device is not available.

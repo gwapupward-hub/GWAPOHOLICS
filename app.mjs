@@ -1,4 +1,5 @@
 import { BOT_USERNAME } from "./config.mjs";
+import { createSensoryLayer } from "./sensory-layer.mjs";
 import { startTelegramSession, refreshPlayer, sendGameCommand } from "./server-client.mjs";
 import { homeNarrator, cinematicMotionClass, toggleCinematicMotion, storyMotionEnabled, storyStage, introPanel, decisionPanel, consequencePanel, resultPanel, resultScore } from "./cinematic-view.mjs";
 import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARACTERS, CHARACTER_ART, storyAssetExt } from "./story-runtime.mjs";
@@ -18,6 +19,8 @@ import {
 } from "./game-core.mjs";
 
 const root = document.querySelector("#app");
+// A single presentation-only controller handles every audio and haptic cue.
+const sensory = createSensoryLayer();
 const tg = window.Telegram?.WebApp;
 const isTelegram = Boolean(tg?.initData);
 const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname) || location.protocol === "file:";
@@ -63,9 +66,7 @@ function persist() {
   catch { showToast("Device storage is unavailable; your progress may not persist."); }
 }
 
-function haptic(kind = "light") {
-  try { tg?.HapticFeedback?.impactOccurred(kind); } catch { /* optional Telegram feature */ }
-}
+function haptic(kind = "light") { sensory.hapticImpact(kind); }
 
 function setupTelegram() {
   if (!tg) return;
@@ -347,6 +348,7 @@ const story = {
   typer: null,
   previous: null,        // last background, so the next shot can crossfade from it
   countOnEnter: false,
+  currentShot: null,
   keyboard: false,
   preloaded: new Map()
 };
@@ -439,6 +441,8 @@ function leaveStory() {
   story.typer = null;
   story.el = null;
   story.previous = null;
+  story.currentShot = null;
+  sensory.setMood(view === "founder" ? "founder" : "menu");
   setStoryChrome(false);
 }
 
@@ -446,6 +450,7 @@ function renderStory() {
   const entry = view === "graduation" ? null : view === "origin" ? originEntry() : getCase();
   const shot = view === "graduation" ? graduationShot() : view === "origin" ? originStoryShot(entry) : storyShot(entry);
   shot.previous = story.previous;
+  story.currentShot = shot;
   director.dispose();
   story.typer?.dispose();
   setStoryChrome(true);
@@ -477,6 +482,7 @@ function applyStoryStep(step) {
   const el = story.el;
   if (!el || !el.isConnected) return;
   el.dataset.step = step;
+  sensory.onSceneStep(story.currentShot, step);
   // Cumulative classes (at-details, at-enter, ...) let CSS stage each reveal once and keep it.
   const order = [...SCENE_STEPS, ...EXIT_STEPS];
   const reached = order.indexOf(step);
@@ -514,15 +520,15 @@ async function commitChoice(id) {
       game = await remoteCommand("choose",{caseId,choiceId:id});
       if (game.played.some(run=>run.caseId===caseId)) {
         stage="result";countPending=true;
-        try {tg?.HapticFeedback?.notificationOccurred(game.played.at(-1).delta>=0?"success":"warning");}catch{}
-      } else stage="beat";
+        sensory.onConfirmedOutcome(game.played.find((run) => run.caseId === caseId).delta, `v1:${caseId}`);
+      } else { stage="beat"; sensory.playEffect("confirm"); }
     } else {
       game = chooseStep(game, caseId, id);
       if (game.draft.path.length === current.stages.length) {
         game = completeChain(game, caseId);
         stage = "result";countPending=true;
-        try { tg?.HapticFeedback?.notificationOccurred(game.played.at(-1).delta >= 0 ? "success" : "warning"); } catch {}
-      } else stage = "beat";
+        sensory.onConfirmedOutcome(game.played.find((run) => run.caseId === caseId).delta, `v1:${caseId}`);
+      } else { stage = "beat"; sensory.playEffect("confirm"); }
       persist();
     }
     render(); if (!story.active) window.scrollTo({ top: 0, behavior: "smooth" });
@@ -540,6 +546,7 @@ function chooseInStory(button) {
   button.classList.add("is-chosen");
   button.setAttribute("aria-pressed", "true");
   story.el?.classList.add("has-choice");
+  sensory.playEffect("choice");
   haptic("medium");
   // The last move settles the chain: warm up only the one result scene the player will see.
   if (!game.remote && game.draft.path.length === entry.stages.length - 1) {
@@ -700,8 +707,10 @@ async function commitOriginChoice(id) {
   try {
     founder = await founderCommand("origin_choose", { caseId: originCaseId, choiceId: id });
     const finished = founder.quest.completed.some((c) => c.caseId === originCaseId);
-    if (finished) { originStage = "result"; countPending = true; try { tg?.HapticFeedback?.notificationOccurred("success"); } catch { /* optional */ } }
-    else originStage = "beat";
+    if (finished) {
+      originStage = "result"; countPending = true;
+      sensory.onConfirmedOutcome(1, `origin:${founder?.origin?.openRun?.runNumber ?? 0}:${originCaseId}`);
+    } else { originStage = "beat"; sensory.playEffect("confirm"); }
     render();
   } catch (error) { showToast(error.message); await resyncFounder(); }
   finally { moveBusy = false; }
@@ -715,6 +724,7 @@ function chooseInOrigin(button) {
   button.classList.add("is-chosen");
   button.setAttribute("aria-pressed", "true");
   story.el?.classList.add("has-choice");
+  sensory.playEffect("choice");
   haptic("medium");
 }
 
@@ -795,6 +805,7 @@ root.addEventListener("click", async (event) => {
     moveBusy = true;
     const id = button.dataset.choice;
     button.classList.add("locked-choice");
+    sensory.playEffect("choice");
     haptic("medium");
     window.setTimeout(() => commitChoice(id), 250);
     return;
@@ -816,6 +827,10 @@ root.addEventListener("click", async (event) => {
         persist();
       }
       selectedChoice=null;
+      if (stage === "result") {
+        const run = game.played.find((item) => item.caseId === caseId);
+        if (run) sensory.onConfirmedOutcome(run.delta, `v1:${caseId}`);
+      } else sensory.playEffect("confirm");
       haptic("medium");
       render();
       window.scrollTo({ top: 0, behavior: "smooth" });

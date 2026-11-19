@@ -7,7 +7,7 @@
 export const SENSORY_SETTINGS_KEY = "gwapoholics.sensory.v1";
 export const IMPACT_THROTTLE_MS = 60;
 const DEFAULTS = Object.freeze({ music: true, musicVolume: 0.18, effects: true, effectsVolume: 0.32, haptics: true });
-const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value)));
+const clamp = (value, min, max) => Number.isFinite(Number(value)) ? Math.min(max, Math.max(min, Number(value))) : min;
 
 export function normalizeSensorySettings(value = {}) {
   return {
@@ -57,9 +57,11 @@ export function createSensoryLayer({
   let musicStep = 0;
   let lastImpactAt = -Infinity;
   let lastScene = "";
+  let mood = "menu";
+  let revision = 0;
   let restoreFocus = null;
+  const settledCues = new Set();
   const listeners = [];
-  const observer = { current: null };
   const storage = deviceStorage(telegram);
   const local = {
     get() { try { return win?.localStorage?.getItem(SENSORY_SETTINGS_KEY) ?? null; } catch { return null; } },
@@ -71,20 +73,29 @@ export function createSensoryLayer({
     listeners.push(() => target?.removeEventListener?.(type, fn, options));
   }
   function persist() {
+    revision += 1;
     const value = JSON.stringify(settings);
     local.set(value);
     void storage?.set(SENSORY_SETTINGS_KEY, value);
   }
   async function load() {
-    let raw = await storage?.get(SENSORY_SETTINGS_KEY);
-    if (!raw) raw = local.get();
-    try { if (raw) settings = normalizeSensorySettings(JSON.parse(raw)); } catch { settings = { ...DEFAULTS }; }
+    // Local preferences apply immediately, including haptic opt-out. DeviceStorage
+    // may resolve later; it must never overwrite a new player interaction.
+    const priorRevision = revision;
+    const localRaw = local.get();
+    try { if (localRaw) settings = normalizeSensorySettings(JSON.parse(localRaw)); } catch { /* defaults */ }
     updateBuses();
     renderSettings();
+    const remoteRaw = await storage?.get(SENSORY_SETTINGS_KEY);
+    if (revision === priorRevision && remoteRaw) {
+      try { settings = normalizeSensorySettings(JSON.parse(remoteRaw)); } catch { /* retain local values */ }
+      updateBuses();
+      renderSettings();
+    }
     return { ...settings };
   }
   function ensureAudio() {
-    if (!AudioContextClass) return false;
+    if (disposed || !AudioContextClass || doc?.visibilityState === "hidden") return false;
     try {
       if (!context) {
         context = new AudioContextClass();
@@ -94,9 +105,19 @@ export function createSensoryLayer({
         musicBus.connect(master); effectsBus.connect(master); master.connect(context.destination);
         updateBuses();
       }
-      if (context.state === "suspended") void context.resume().catch?.(() => {});
+      if (context.state !== "running") {
+        // Call resume synchronously in the user gesture; mark unlocked only after
+        // the promise succeeds and the context is actually running.
+        const attempt = context.resume();
+        Promise.resolve(attempt).then(() => {
+          if (disposed || doc?.visibilityState === "hidden" || context?.state !== "running") return;
+          unlocked = true;
+          updateBuses();
+        }).catch(() => { stopMusic(); });
+        return false;
+      }
       unlocked = true;
-      if (settings.music) startMusic();
+      updateBuses();
       return true;
     } catch { return false; }
   }
@@ -106,11 +127,31 @@ export function createSensoryLayer({
     if (master?.gain) master.gain.setTargetAtTime(settings.music || settings.effects ? 1 : 0, at, 0.03);
     if (musicBus?.gain) musicBus.gain.setTargetAtTime(settings.music ? settings.musicVolume : 0, at, 0.08);
     if (effectsBus?.gain) effectsBus.gain.setTargetAtTime(settings.effects ? settings.effectsVolume : 0, at, 0.025);
-    if (settings.music && unlocked) startMusic(); else stopMusic();
+    if (settings.music && unlocked && context.state === "running") startMusic(); else stopMusic();
   }
   // An original, quiet eight-note ambient motif. It is generated from oscillators
   // at runtime; there is no third-party composition or sound file to license.
-  const notes = [110, 164.81, 220, 164.81, 130.81, 196, 261.63, 196];
+  const moods = Object.freeze({
+    menu: [110, 164.81, 220, 164.81, 130.81, 196, 261.63, 196],
+    mission: [130.81, 196, 261.63, 196, 146.83, 220, 293.66, 220],
+    tension: [98, 146.83, 196, 146.83, 103.83, 155.56, 207.65, 155.56],
+    danger: [82.41, 123.47, 164.81, 123.47, 87.31, 130.81, 174.61, 130.81],
+    victory: [164.81, 246.94, 329.63, 392, 196, 293.66, 392, 493.88],
+    founder: [123.47, 185, 246.94, 185, 146.83, 220, 293.66, 220]
+  });
+  function setMood(next) {
+    const target = Object.hasOwn(moods, next) ? next : "menu";
+    if (mood === target) return;
+    mood = target;
+    if (target === "menu" || target === "founder") lastScene = "";
+    musicStep = 0;
+    if (!context || context.state !== "running" || !musicBus) return;
+    const at = context.currentTime;
+    // Synthesize a short dip and swell instead of cutting between themes.
+    musicBus.gain.setTargetAtTime(0, at, 0.09);
+    musicBus.gain.setTargetAtTime(settings.music ? settings.musicVolume : 0, at + 0.25, 0.15);
+    musicTick();
+  }
   function playTone(frequency, duration, destination, { type = "sine", volume = 0.08, delay = 0, endFrequency = frequency } = {}) {
     if (!context || !destination || disposed) return;
     try {
@@ -125,19 +166,20 @@ export function createSensoryLayer({
     } catch { /* Web Audio is an optional enhancement */ }
   }
   function musicTick() {
-    if (!context || !settings.music || doc?.visibilityState === "hidden") return;
-    const note = notes[musicStep % notes.length];
+    if (!context || !unlocked || context.state !== "running" || !settings.music || doc?.visibilityState === "hidden") return;
+    const pattern = moods[mood];
+    const note = pattern[musicStep % pattern.length];
     playTone(note, 1.65, musicBus, { volume: 0.11, type: "sine" });
     if (musicStep % 4 === 0) playTone(note / 2, 2.8, musicBus, { volume: 0.13, type: "triangle" });
     musicStep += 1;
   }
   function startMusic() {
-    if (!context || musicTimer !== null || !settings.music || doc?.visibilityState === "hidden") return;
+    if (!context || !unlocked || context.state !== "running" || musicTimer !== null || !settings.music || doc?.visibilityState === "hidden") return;
     musicTick(); musicTimer = timers.set(musicTick, 1800);
   }
   function stopMusic() { if (musicTimer !== null) { timers.clear(musicTimer); musicTimer = null; } }
   function playEffect(kind) {
-    if (!settings.effects || !unlocked || !context || doc?.visibilityState === "hidden") return;
+    if (!settings.effects || !unlocked || !context || context.state !== "running" || doc?.visibilityState === "hidden") return;
     const sounds = {
       reveal: [[392, .18, "sine"], [587.33, .24, "sine"]],
       choice: [[330, .10, "triangle"]],
@@ -150,63 +192,49 @@ export function createSensoryLayer({
       playTone(hz, duration, effectsBus, { type, volume: kind === "impact" ? .16 : .1, delay: i * .075, endFrequency: kind === "impact" ? 70 : hz });
     }
   }
-  function haptic(kind = "light") {
-    if (!settings.haptics) return;
-    const h = telegram?.HapticFeedback;
-    if (!h) return;
+  function hapticEvent(method, kind) {
+    if (!settings.haptics || disposed) return false;
+    const api = telegram?.HapticFeedback;
+    if (typeof api?.[method] !== "function") return false;
     const time = now();
-    if (time - lastImpactAt < IMPACT_THROTTLE_MS) return;
-    lastImpactAt = time;
-    try { h.impactOccurred(kind); } catch { /* optional Telegram feature */ }
+    if (time - lastImpactAt < IMPACT_THROTTLE_MS) return false;
+    try {
+      api[method](...(kind === undefined ? [] : [kind]));
+      lastImpactAt = time;
+      return true;
+    } catch { return false; }
   }
-  function wrapNativeHaptics() {
-    const h = telegram?.HapticFeedback;
-    if (!h || h.__gwapSensoryWrapped) return;
-    for (const name of ["impactOccurred", "notificationOccurred", "selectionChanged"]) {
-      const original = h[name];
-      if (typeof original !== "function") continue;
-      try {
-        h[name] = function (...args) {
-          if (!settings.haptics) return;
-          if (name === "impactOccurred") {
-            const time = now(); if (time - lastImpactAt < IMPACT_THROTTLE_MS) return;
-            lastImpactAt = time;
-          }
-          try { return original.apply(this, args); } catch { return undefined; }
-        };
-      } catch { /* frozen host objects retain their own guarded behavior */ }
-    }
-    try { Object.defineProperty(h, "__gwapSensoryWrapped", { value: true }); } catch { /* no-op */ }
-  }
-  function currentScene() {
-    const stage = doc?.querySelector?.(".story-stage");
-    return stage ? { stage, key: stage.dataset.scene || "", step: stage.dataset.step || "", classes: stage.classList } : null;
-  }
-  function reactToScene() {
-    const scene = currentScene(); if (!scene) { lastScene = ""; return; }
-    const signature = `${scene.key}:${scene.step}`;
+  function onSceneStep(shot, step) {
+    if (!shot) return;
+    const signature = String(shot.key) + ":" + step;
     if (signature === lastScene) return;
-    const priorStep = lastScene.split(":").at(-1); lastScene = signature;
-    if (scene.step === "details") playEffect("reveal");
-    else if (scene.step === "choices" && priorStep !== "choices") playEffect("confirm");
-    else if (scene.step === "enter") {
-      if (scene.classes.contains("effect-impact")) playEffect("impact");
-      else if (scene.classes.contains("effect-victory") || scene.classes.contains("effect-glow")) playEffect("success");
+    lastScene = signature;
+    if (step === "details") playEffect("reveal");
+    else if (step === "choices") playEffect("soft");
+    if (step === "background") {
+      const sceneMood = shot.phase === "decision" ? "tension" :
+        shot.phase === "consequence" ? "danger" :
+        shot.phase === "result" ? (shot.effect === "victory" ? "victory" : "danger") : "mission";
+      setMood(sceneMood);
     }
   }
-  function onClick(event) {
-    const button = event.target?.closest?.("[data-action]"); if (!button) return;
-    ensureAudio();
-    const action = button.dataset.action;
-    if (action === "choose" || action === "og-choose") { playEffect("choice"); haptic("medium"); }
-    else if (["decide", "next-step", "og-next", "og-decide", "fh-start-run", "fh-enter-hub"].includes(action)) { playEffect("confirm"); haptic("light"); }
-    else if (["story-skip", "story-hurry"].includes(action)) playEffect("soft");
+  function onConfirmedOutcome(delta, eventKey) {
+    if (eventKey && settledCues.has(eventKey)) return false;
+    if (eventKey) settledCues.add(eventKey);
+    const good = Number(delta) >= 0;
+    playEffect(good ? "success" : "impact");
+    hapticEvent("notificationOccurred", good ? "success" : "warning");
+    return true;
   }
   function onGesture() { ensureAudio(); }
   function onVisibility() {
-    if (doc?.visibilityState === "hidden") { stopMusic(); return; }
-    if (unlocked) { void context?.resume?.().catch?.(() => {}); startMusic(); }
-    reactToScene();
+    if (doc?.visibilityState === "hidden") {
+      stopMusic();
+      // Stopping the clock does not stop already scheduled oscillator tails.
+      try { void context?.suspend?.().catch?.(() => {}); } catch { /* optional */ }
+      return;
+    }
+    if (unlocked) ensureAudio();
   }
 
   function renderSettings() {
@@ -235,9 +263,10 @@ export function createSensoryLayer({
     const dialog = host.querySelector("dialog");
     host.querySelector(".sensory-open").addEventListener("click", (event) => {
       restoreFocus = event.currentTarget; ensureAudio();
-      if (typeof dialog.showModal === "function") dialog.showModal(); else dialog.setAttribute("open", "");
+      if (typeof dialog.showModal === "function") dialog.showModal(); else { dialog.setAttribute("open", ""); dialog.querySelector(".sensory-close")?.focus?.(); }
     });
     dialog.addEventListener("close", () => restoreFocus?.focus?.());
+    dialog.addEventListener("keydown", (event) => { if (event.key === "Escape" && typeof dialog.showModal !== "function") { dialog.removeAttribute("open"); restoreFocus?.focus?.(); } });
     dialog.addEventListener("change", (event) => {
       const { name, checked, value } = event.target;
       if (name === "music" || name === "effects" || name === "haptics") settings[name] = checked;
@@ -255,27 +284,26 @@ export function createSensoryLayer({
     });
   }
 
-  wrapNativeHaptics();
   renderSettings();
   void load();
   listen(doc, "pointerdown", onGesture, { passive: true });
   listen(doc, "keydown", (event) => { if (event.key === "Enter" || event.key === " ") onGesture(); }, { passive: true });
-  listen(doc, "click", onClick);
   listen(doc, "visibilitychange", onVisibility);
   if (telegram?.onEvent) {
-    try { telegram.onEvent("activated", onVisibility); listeners.push(() => { try { telegram.offEvent?.("activated", onVisibility); } catch { /* optional */ } }); } catch { /* unsupported Telegram clients */ }
-  }
-  if (doc?.documentElement && typeof win?.MutationObserver === "function") {
-    observer.current = new win.MutationObserver(reactToScene);
-    observer.current.observe(doc.documentElement, { subtree: true, attributes: true, attributeFilter: ["class", "data-step", "data-scene"] });
+    try { telegram.onEvent("activated", onVisibility); listeners.push(() => { try { telegram.offEvent?.("activated", onVisibility); } catch { /* optional */ } }); } catch { /* optional */ }
   }
   return {
     get settings() { return { ...settings }; },
+    get mood() { return mood; },
     setSettings(patch) { settings = normalizeSensorySettings({ ...settings, ...patch }); persist(); updateBuses(); renderSettings(); return { ...settings }; },
+    setMood, onSceneStep, onConfirmedOutcome,
+    hapticImpact(kind = "light") { return hapticEvent("impactOccurred", kind); },
+    hapticNotification(kind = "success") { return hapticEvent("notificationOccurred", kind); },
+    hapticSelection() { return hapticEvent("selectionChanged"); },
     playEffect,
     resume() { return ensureAudio(); },
-    dispose() { disposed = true; stopMusic(); observer.current?.disconnect(); listeners.splice(0).forEach((remove) => remove()); try { void context?.close?.(); } catch { /* optional */ } }
+    dispose() { disposed = true; stopMusic(); listeners.splice(0).forEach((remove) => remove()); try { void context?.close?.(); } catch { /* optional */ } }
   };
 }
 
-if (typeof document !== "undefined") createSensoryLayer();
+// Instantiated by app.mjs so gameplay owns a single sensory controller.
