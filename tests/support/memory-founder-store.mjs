@@ -8,7 +8,7 @@ function violation(name) { return Object.assign(new Error(`duplicate key value v
 export function createMemoryFounderStore({ commandBudget = { limit: 30, windowSeconds: 60 }, clock = () => Date.now() } = {}) {
   let db = {
     founders: new Map(), tgAccounts: new Map(), runs: new Map(), quests: [], qualification: new Map(), capital: new Map(),
-    ledger: [], settlements: [], reputation: [], telemetry: [], receipts: new Map(), legacyPlayers: new Set()
+    businesses: new Map(), cycles: new Map(), upgrades:new Map(), ledger: [], settlements: [], reputation: [], telemetry: [], receipts: new Map(), legacyPlayers: new Set()
   };
   let queue = Promise.resolve();
   const copy = (v) => structuredClone(v);
@@ -41,6 +41,33 @@ export function createMemoryFounderStore({ commandBudget = { limit: 30, windowSe
           },
           async getQualification(founderId) { return copy(db.qualification.get(founderId)); },
           async getCapital(founderId) { return copy(db.capital.get(founderId)); },
+          async getBusiness(founderId) { return copy(db.businesses.get(founderId) ?? null); },
+          async openFirstBusiness({ founderId, businessId, offer, transactionId, decision, now }) {
+            if (db.businesses.has(founderId)) throw violation("v2_first_business_per_founder");
+            const capital = db.capital.get(founderId);
+            if (capital.balanceG < offer.setupCostG + offer.minimumOperatingReserveG)
+              throw new FounderError("insufficient_capital", "Capital below setup plus reserve", 409);
+            capital.balanceG -= offer.setupCostG;
+            db.businesses.set(founderId, { businessId, businessTypeId: offer.businessTypeId, version: offer.version,
+              status: "operating", transactionId, decision, setupCostG: offer.setupCostG, minimumOperatingReserveG: offer.minimumOperatingReserveG,
+              balanceAfterG: capital.balanceG, openedAt: now });
+          },
+          async getOperations(founderId) {
+            const rows = db.cycles.get(founderId) ?? [];
+            return { upgrades:copy(db.upgrades.get(founderId) ?? []), history: copy(rows.slice(-10).reverse()), totalXp: rows.reduce((n,r)=>n+r.xp,0), everProfitable: rows.some(r=>r.netG>0) };
+          },
+          async recordUpgrade(founderId,businessId,receipt) {
+            const rows = db.upgrades.get(founderId) ?? [];
+            if (db.businesses.get(founderId)?.businessId !== businessId || rows.some(r=>r.upgradeId===receipt.upgradeId))
+              throw violation("upgrade_owner_or_id");
+            db.upgrades.set(founderId,[...rows,copy(receipt)]);
+          },
+          async recordCycle(founderId,businessId,receipt) {
+            const rows = db.cycles.get(founderId) ?? [];
+            if (db.businesses.get(founderId)?.businessId !== businessId || rows.length+1 !== receipt.cycleNumber) throw violation("cycle_owner_or_number");
+            rows.push(copy(receipt));
+            db.cycles.set(founderId,rows);
+          },
           async getOpenRun(founderId) {
             const run = [...db.runs.values()].find((r) => r.founderId === founderId && r.status === "in_progress");
             return run ? copy(run) : null;

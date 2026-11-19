@@ -70,6 +70,7 @@ function earnedResult(policy, run, row) {
     title: quest.title,
     questScoreG: row.questScoreG,
     maxQuestScoreG: policy.perQuestMaxG,
+    outcomeSign: Math.sign(earned.delta),
     scoreBand: questScoreBand(policy, row.questScoreG),
     band: earned.band,
     // Only earned information, never raw simulated cash flow or the seed.

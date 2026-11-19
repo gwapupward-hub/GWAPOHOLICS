@@ -180,6 +180,27 @@ function previewCard(p) {
     <em class="fh-chip">UPCOMING</em></li>`;
 }
 
+function operationsPanel(operations) {
+  if (!operations) return "";
+  const { offer, history, totalXp } = operations;
+  if (!offer && !history.length) return "";
+  return `<section class="fh-next" aria-label="Business operations"><small>BUSINESS OPERATIONS · ${fmt(totalXp)} XP</small>
+    ${offer ? `<h2>Plan cycle ${fmt(offer.cycleNumber)}</h2>
+      <p>Pay for stock and overhead before sales. You can serve up to ${fmt(offer.capacity)} units. Unsold stock brings in no revenue this cycle.</p>
+      ${offer.nextAt ? `<p>Next opening: ${esc(new Date(offer.nextAt).toLocaleString())}.</p>` : ""}
+      ${offer.choices.map(o=>`<button type="button" class="cta secondary" data-action="fh-operate"
+        data-choice="${esc(o.id)}" data-cycle="${offer.cycleNumber}" data-version="${offer.version}">${esc(o.label)} ·
+        stock ${fmt(o.stock)}, pay ${fmt(o.costG)} G, sell at ${fmt(o.unitPriceG)} G each</button>`).join("")}` : ""}
+    ${offer?.upgrade ? `<button type="button" class="cta secondary" data-action="fh-reinvest" data-choice="${esc(offer.upgrade.id)}"
+      data-version="${offer.version}" ${offer.upgrade.affordable ? "" : "disabled"}>Expand capacity by ${fmt(offer.upgrade.extraCapacity)} · pay ${fmt(offer.upgrade.costG)} G</button>` : ""}
+    ${operations.upgrades.map(u=>`<p>Capacity expansion · +${fmt(u.extraCapacity)} units · ${fmt(u.costG)} G paid · ${fmt(u.balanceAfterG)} G after purchase.</p>`).join("")}
+    ${history.length ? `<h3 tabindex="-1" id="cycle-receipt">Latest operating receipts</h3>
+      <ol>${history.map(r=>`<li>Cycle ${fmt(r.cycleNumber)} · ${fmt(r.unitsSold)} sold.
+        Because you chose ${r.supplier === "scheduled" ? "scheduled deliveries" : "flexible orders"}, the supplier served this cycle under those terms.
+        Revenue ${fmt(r.revenueG)} G − costs ${fmt(r.costG)} G = ${fmt(r.netG)} G.
+        Capital ${fmt(r.balanceAfterG)} G · ${fmt(r.xp)} XP earned.</li>`).join("")}</ol>` : ""}</section>`;
+}
+
 function receiptRow(r) {
   return `<li><span><strong>Run ${r.runNumber} · verified ${fmt(r.verifiedScoreG)}</strong><small>${r.outcome === "credited" ? `+${fmt(r.creditDeltaG)} G credited` : "No new capital (not above your best)"} · receipt ${esc(r.transactionId ? r.transactionId.slice(0, 8) : "none")}</small></span><b>${r.outcome === "credited" ? "+" + fmt(r.creditDeltaG) : "0"} G</b></li>`;
 }
@@ -192,7 +213,10 @@ export function founderHubPage(state, { name = "Founder" } = {}) {
   const o = state.origin, cap = state.capital, hub = state.hub, copy = CAPITAL_COPY[cap.status] || CAPITAL_COPY.unclassified;
   const heroBase = sceneDirection("founder-runway", "intro").base;
   const faceBase = CHARACTER_ART["future-you"].image;
-  const line = heroLine(state);
+  const business = hub.business;
+  const offer = hub.openingOffer;
+  const businessName = hub.businessPreviews.find(t => t.businessTypeId === business?.businessTypeId)?.name;
+  const line = business ? "The doors are open. Your first company and its opening receipt are on file." : heroLine(state);
   const next = state.nextStep;
   return `<div class="fh-page page-enter"><h1 class="sr-only">Founder Hub</h1>
     <section class="fh-hero" aria-label="Founder Hub">
@@ -210,14 +234,28 @@ export function founderHubPage(state, { name = "Founder" } = {}) {
       <div><span>VERIFIED ORIGIN SCORE (BEST)</span><strong>${fmt(o.personalBestScoreG)}<small> / ${fmt(o.policy?.maxScoreG ?? 0)}</small></strong></div>
       <div><span>STARTUP CAPITAL</span><strong>◉ ${fmt(cap.balanceG)}<small> G</small></strong></div>
     </section>
-    <p class="fh-capital ${copy.tone}"><em class="fh-chip">${copy.chip}</em> ${esc(copy.text)}</p>
+    ${business ? "" : `<p class="fh-capital ${copy.tone}"><em class="fh-chip">${copy.chip}</em> ${esc(copy.text)}</p>`}
     <section class="fh-next" aria-label="Your next step"><small>NEXT STEP</small><h2>${esc(next.title)}</h2><p>${esc(next.body)}</p>
       ${next.action ? `<button class="arcade-button${next.id === "replay_origin" ? "" : " is-orange"}" data-action="${next.action.kind === "preview_businesses" ? "fh-preview" : next.action.kind === "enter_hub" ? "fh-enter-hub" : next.action.kind === "open_origin" ? "fh-open-run" : "fh-replay"}">${esc(next.action.label)} <b>→</b></button>` : ""}
       ${next.milestone ? `<small class="fh-milestone">Next milestone: <b>${esc(hub.goals.find((g) => g.id === next.milestone.goalId)?.title ?? "")}</b> · ${esc(next.milestone.availableIn)}</small>` : ""}</section>
     <div class="arcade-section-title"><strong>YOUR GOALS</strong><small>${hub.goals.filter((g) => g.status === "completed").length} / ${hub.goals.length} DONE</small></div>
     <ol class="fh-goals">${hub.goals.map(goalCard).join("")}</ol>
+    ${business ? `<section class="fh-next" aria-label="Your business"><small>OPERATING</small>
+      <h2 tabindex="-1" id="fh-company-name">${esc(businessName ?? business.businessTypeId)}</h2>
+      <p>Opening cost: ${fmt(business.setupCostG)} G · Capital after opening: ${fmt(business.balanceAfterG)} G.</p>
+      <p>Supplier commitment: ${business.decision.choiceId === "scheduled" ? "Reserved delivery slot" : "Flexible orders"}. Your choice is saved for your next supplier conversation.</p>
+      <small>Opening receipt ${esc(business.transactionId)}</small></section>` : ""}
+    ${operationsPanel(hub.operations)}
+    ${offer ? `<details class="fh-receipts" id="fh-offer"><summary>Review ${esc(offer.name)} opening terms</summary>
+      <p>Pay ${fmt(offer.setupCostG)} G once. Keep at least ${fmt(offer.minimumOperatingReserveG)} G in operating reserve.</p>
+      <fieldset><legend>${esc(offer.supplierDecision.prompt)}</legend>
+        ${offer.supplierDecision.options.map(option => `<label class="quiz-option"><input type="radio" name="supplier-choice" value="${esc(option.id)}" required />
+          <span><strong>${esc(option.label)}</strong> · ${esc(option.detail)}</span></label>`).join("")}</fieldset>
+      <button type="button" class="cta primary" data-action="fh-open-business" data-type="${esc(offer.businessTypeId)}"
+        data-version="${offer.version}" ${offer.affordable ? "" : "disabled"}>Confirm opening · ${fmt(offer.setupCostG)} G</button>
+      ${offer.affordable ? "" : "<p>Replay Origin and improve your personal best to earn more capital.</p>"}</details>` : ""}
     <div class="arcade-section-title" id="fh-previews"><strong>STARTER BUSINESSES</strong><small>PREVIEW ONLY</small></div>
-    <ul class="fh-previews">${hub.businessPreviews.map(previewCard).join("")}</ul>
+    <ul class="fh-previews">${hub.businessPreviews.filter(t => t.businessTypeId !== offer?.businessTypeId && t.businessTypeId !== business?.businessTypeId).map(previewCard).join("")}</ul>
     <p class="fh-note">These businesses open in an upcoming build. Nothing here can be bought yet, and no capital is spent by looking.</p>
     <div class="arcade-section-title"><strong>REPLAY THE ORIGIN</strong><small>ALWAYS FREE</small></div>
     <section class="fh-replay"><p>${esc(o.replay.rule)} Your best: <b>${fmt(o.personalBestScoreG)}</b>. Lifetime credited: <b>${fmt(o.lifetimeCreditedG)} G</b>.</p>

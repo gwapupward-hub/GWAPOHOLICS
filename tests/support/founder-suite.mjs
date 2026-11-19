@@ -14,6 +14,15 @@ export const baseEnv = {
   GWAP_V2_ALLOW_UNAPPROVED_POLICY: "isolated-preview-only", GWAP_V2_ANALYTICS_KEY: ANALYTICS_KEY
 };
 export const config = loadV2Config(baseEnv);
+// Synthetic values exercise both signs of net income; they are never loaded by the app.
+export const operationsFixture = {
+  status: "approved", businessTypeId: "barbershop", templateVersion: 1, version: 1,
+  cooldownMs: 60000, firstCycleXp: 7, capacity: 4, upgrade: {id:"capacity",costG:9,extraCapacity:2},
+  options: [
+    { id: "small", label: "Limited stock", stock: 3, unitCostG: 2, unitPriceG: 5, overheadG: 1, demand: { scheduled: 3, flexible: 2 } },
+    { id: "large", label: "Stock up", stock: 9, unitCostG: 4, unitPriceG: 5, overheadG: 2, demand: { scheduled: 4, flexible: 3 } }
+  ]
+};
 const HOUR = 3_600_000;
 
 /** A seed whose evidence regimes let every quest reach its policy minimum (a true 0 G run exists). */
