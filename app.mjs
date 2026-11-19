@@ -1,6 +1,7 @@
 import { BOT_USERNAME } from "./config.mjs";
 import { createSensoryLayer } from "./sensory-layer.mjs";
-import { startTelegramSession, refreshPlayer, sendGameCommand } from "./server-client.mjs";
+import { loadPlayerSettings, savePlayerSettings, isManuallySignedOut, setManualSignout, renderPlayerSettings, renderPrivacyPage, renderTermsPage } from "./player-settings.mjs";
+import { startTelegramSession, refreshPlayer, sendGameCommand, logoutTelegramSession } from "./server-client.mjs";
 import { homeNarrator, cinematicMotionClass, toggleCinematicMotion, storyMotionEnabled, storyStage, introPanel, decisionPanel, consequencePanel, resultPanel, resultScore } from "./cinematic-view.mjs";
 import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARACTERS, CHARACTER_ART, storyAssetExt } from "./story-runtime.mjs";
 import { createSceneDirector, SCENE_STEPS, EXIT_STEPS } from "./story-director.mjs";
@@ -20,14 +21,15 @@ import {
 
 const root = document.querySelector("#app");
 // A single presentation-only controller handles every audio and haptic cue.
-const sensory = createSensoryLayer();
+const sensory = createSensoryLayer({ renderControls: false });
+const playerSettings = loadPlayerSettings();
 const tg = window.Telegram?.WebApp;
 const isTelegram = Boolean(tg?.initData);
 const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname) || location.protocol === "file:";
 const explicitDemo = new URLSearchParams(location.search).get("demo") === "1";
 const canPlay = isTelegram || localPreview || explicitDemo;
 const remoteRequested = isTelegram && !explicitDemo;
-let remoteStatus = remoteRequested ? "connecting" : "demo";
+let remoteStatus = remoteRequested ? (isManuallySignedOut() ? "signedOut" : "connecting") : "demo";
 let pendingCommand = null;
 
 const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -50,6 +52,7 @@ let selectedChoice = null;
 let toast = null;
 let resetArmed = false;
 let moveBusy = false;
+let logoutBusy = false;
 
 // v2.1-A Founder Entry. `founder` is always the server's latest snapshot; null/disabled leaves v1 untouched.
 let founder = null;
@@ -83,6 +86,8 @@ function setupTelegram() {
     syncViewport();
     tg.onEvent?.("viewportChanged", syncViewport);
     tg.BackButton?.onClick(() => {
+      if (view === "privacy" || view === "terms") { changeView("settings"); return; }
+      if (view === "settings") { changeView("home"); return; }
       if (view === "origin" || view === "graduation") { openFounderHome(); return; }
       if (view === "scenario" && stage === "decide" && !game.draft?.path.length) { stage = "brief"; selectedChoice = null; render(); return; }
       changeView("home");
@@ -91,7 +96,7 @@ function setupTelegram() {
 }
 
 function backButton() {
-  try { if (view === "scenario" || view === "recovery" || view === "origin" || view === "graduation") tg?.BackButton?.show(); else tg?.BackButton?.hide(); }
+  try { if (view === "scenario" || view === "recovery" || view === "origin" || view === "graduation" || view === "settings" || view === "privacy" || view === "terms") tg?.BackButton?.show(); else tg?.BackButton?.hide(); }
   catch { /* browser preview */ }
 }
 
@@ -109,7 +114,8 @@ function renderToast() {
   toastHost.innerHTML = toast ? `<div class="toast" role="alert">${esc(toast)}</div>` : "";
 }
 
-function showToast(message) {
+function showToast(message, { optional = false } = {}) {
+  if (optional && !playerSettings.notifications) return;
   toast = message;
   renderToast();
   window.setTimeout(() => { if (toast === message) { toast = null; renderToast(); } }, 3800);
@@ -151,6 +157,7 @@ async function authenticatePlayer(){
   remoteStatus='connecting';render();
   try{
     game=await startTelegramSession(tg?.initData);
+    setManualSignout(false);
     remoteStatus='ready';view='home';caseId=null;stage='brief';
   }catch{
     remoteStatus='failed';
@@ -198,7 +205,7 @@ function activeCase() {
 
 function dotLogo(){return '<img src="./brand.svg" class="arcade-mark" alt="" width="42" height="42">';}
 
-function topbar(wallet={balance:game.balance}){return `<header class="topbar arcade-top"><div class="brand-lockup">${dotLogo()}<div class="arcade-wordmark"><strong>GWAPOHOLICS</strong><small>THE BUSINESS GAME</small></div></div><div class="arcade-wallet" ${wallet.caption?`aria-label="${esc(wallet.caption)} ${coins(wallet.balance)} G"`:""}><b>◉</b> ${coins(wallet.balance)}<small>G</small>${wallet.caption?`<i class="arcade-wallet-cap">${esc(wallet.caption)}</i>`:""}</div></header>`;}
+function topbar(wallet={balance:game.balance}){return `<header class="topbar arcade-top"><div class="brand-lockup">${dotLogo()}<div class="arcade-wordmark"><strong>GWAPOHOLICS</strong><small>THE BUSINESS GAME</small></div></div><div class="settings-top-controls"><div class="arcade-wallet" ${playerSettings.hideHeaderBalance?`aria-label="Header balance hidden"`:wallet.caption?`aria-label="${esc(wallet.caption)} ${coins(wallet.balance)} G"`:""}><b>◉</b> ${playerSettings.hideHeaderBalance?"••••":coins(wallet.balance)}<small>G</small>${wallet.caption?`<i class="arcade-wallet-cap">${esc(wallet.caption)}</i>`:""}</div><button type="button" class="settings-access" data-action="nav" data-view="settings" aria-label="Open game settings" ${["settings","privacy","terms"].includes(view)?'aria-current="page"':""}>⚙</button></div></header>`;}
 
 function bottomnav(){return `<nav class="bottomnav arcade-nav${founderEnabled?" has-founder":""}">${[["home","PLAY","◆"],["cases","MISSIONS","▦"],...(founderEnabled?[["founder","FOUNDER","★"]]:[]),["profile","YOU","◉"]].map(([key,label,glyph])=>`<button class="tab ${view===key?"active":""}" data-action="nav" data-view="${key}"><span class="tab-icon">${glyph}</span><span>${label}</span></button>`).join("")}</nav>`;}
 
@@ -284,6 +291,7 @@ function profilePage() {
       const width = Math.max(6, Math.min(100, 50 + dim.score * 5));
       return `<div class="dimension"><div class="dimension-title"><span><b>${String(i + 1).padStart(2, "0")}</b> ${esc(dim.name)}</span><span>${dim.score > 0 ? "+" : ""}${dim.score}</span></div><div class="dimension-bar"><span style="width:${width}%"></span></div><small>${esc(dim.short)}</small></div>`;
     }).join("")}</div>
+    <button type="button" class="settings-link" data-action="nav" data-view="settings" aria-label="Open game settings"><span><strong>GAME SETTINGS</strong><small>Sound, feedback, privacy and account</small></span><span aria-hidden="true">›</span></button>
     <div class="tip-panel">This is a reflection tool, not a financial aptitude test. Values represent the tendencies in your ${count || "future"} simulated decision${count === 1 ? "" : "s"}.</div>
     ${isTelegram ? "" : `<button class="cta secondary reset-button" data-action="reset">${resetArmed ? "TAP AGAIN TO RESET THE PREVIEW" : "RESET LOCAL PREVIEW DATA"}</button>`}
   </div>`;
@@ -531,6 +539,7 @@ async function commitChoice(id) {
       } else { stage = "beat"; sensory.playEffect("confirm"); }
       persist();
     }
+    if (stage === "result") showToast("Mission complete. Review your results.", { optional: true });
     render(); if (!story.active) window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) { showToast(error.message); if(game.remote)await resyncRemote(); }
   finally { moveBusy = false; }
@@ -556,6 +565,11 @@ function chooseInStory(button) {
 
 function render(options = {}) {
   hubTyper?.dispose(); hubTyper = null;
+  if(remoteRequested && remoteStatus==='signedOut') {
+    leaveStory();
+    root.innerHTML='<main class="app-shell"><div class="app-inner"><section class="signed-out-page"><h1>SESSION ENDED.</h1><p>Your server-saved G coins and gameplay are preserved. Sign in again with this Telegram account to resume. This does not log out of Telegram itself.</p><button type="button" data-action="auth-retry">SIGN IN WITH TELEGRAM</button></section></div></main>';
+    return;
+  }
   if(remoteRequested && remoteStatus!=='ready'){
     leaveStory();
     const msg=remoteStatus==='connecting'
@@ -571,6 +585,9 @@ function render(options = {}) {
   if (view === "home") content = welcome();
   else if (view === "cases") content = caseList();
   else if (view === "profile") content = profilePage();
+  else if (view === "settings") content = renderPlayerSettings({ sound: sensory.settings, prefs: playerSettings, telegram: remoteRequested });
+  else if (view === "privacy") content = renderPrivacyPage(playerSettings);
+  else if (view === "terms") content = renderTermsPage();
   else if (view === "ledger") content = ledgerPage();
   else if (view === "recovery") content = recoveryPage();
   else if (view === "founder" || view === "origin" || view === "graduation") content = founderPage();
@@ -774,6 +791,38 @@ root.addEventListener("click", async (event) => {
   if (!button || button.disabled) return;
   const { action } = button.dataset;
   if (action === "auth-retry") { if(remoteRequested)authenticatePlayer(); return; }
+  if (action === "settings-logout") {
+    if (!remoteRequested || remoteStatus !== "ready") return;
+    const dialog = root.querySelector("#game-logout-dialog");
+    if (dialog?.showModal) dialog.showModal();
+    else dialog?.setAttribute("open", "");
+    return;
+  }
+  if (action === "settings-logout-cancel") {
+    const dialog = root.querySelector("#game-logout-dialog");
+    if (dialog?.close) dialog.close();
+    else dialog?.removeAttribute("open");
+    root.querySelector('[data-action="settings-logout"]')?.focus();
+    return;
+  }
+  if (action === "settings-logout-confirm") {
+    if (!remoteRequested || remoteStatus !== "ready" || logoutBusy) return;
+    if (moveBusy || founderBusy) { showToast("Finish the active game action before signing out."); return; }
+    logoutBusy = true; button.disabled = true;
+    try {
+      await logoutTelegramSession();
+      // Wipe authenticated snapshots from this page, but never delete server
+      // progress or the separately persisted local demo.
+      pendingCommand = null; pendingFounderCommand = null;
+      founder = null; founderEnabled = false;
+      game = createGame(); setManualSignout(true); remoteStatus = "signedOut"; view = "home"; caseId = null; originCaseId = null;
+      leaveStory(); render();
+    } catch (error) {
+      button.disabled = false;
+      showToast("Could not end the session. Please try again.");
+    } finally { logoutBusy = false; }
+    return;
+  }
   if (action === "story-hurry") { hurryStory(); return; }
   if (action === "story-skip") { skipStory(); return; }
   if (action === "story-exit") { if (view === "origin" || view === "graduation") openFounderHome(); else changeView("home"); return; }
@@ -832,6 +881,7 @@ root.addEventListener("click", async (event) => {
         if (run) sensory.onConfirmedOutcome(run.delta, `v1:${caseId}`);
       } else sensory.playEffect("confirm");
       haptic("medium");
+      if (stage === "result") showToast("Mission complete. Review your results.", { optional: true });
       render();
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (error) { showToast(error.message); }
@@ -844,6 +894,31 @@ root.addEventListener("click", async (event) => {
     if (!resetArmed) { resetArmed = true; haptic(); render(); return; }
     game = createGame(); persist(); changeView("home"); showToast("Preview reset. You have 1,000 virtual coins again.");
   }
+});
+
+// Settings controls use delegated events so page rerenders never duplicate handlers.
+root.addEventListener("change", (event) => {
+  const target = event.target.closest?.("[data-settings-category]");
+  if (!target) return;
+  const { name } = target;
+  if (target.dataset.settingsCategory === "player") {
+    if (!["notifications", "hideHeaderBalance"].includes(name)) return;
+    Object.assign(playerSettings, savePlayerSettings({ ...playerSettings, [name]: target.checked }));
+    if (name === "hideHeaderBalance") {
+      render();
+      root.querySelector('[name="hideHeaderBalance"]')?.focus({ preventScroll: true });
+    }
+  } else if (target.dataset.settingsCategory === "sound") {
+    if (!["music", "effects", "haptics", "musicVolume", "effectsVolume"].includes(name)) return;
+    sensory.setSettings({ [name]: target.type === "checkbox" ? target.checked : Number(target.value) });
+  }
+});
+root.addEventListener("input", (event) => {
+  const target = event.target.closest?.('input[type="range"][data-settings-category="sound"]');
+  if (!target || !["musicVolume", "effectsVolume"].includes(target.name)) return;
+  sensory.setSettings({ [target.name]: Number(target.value) });
+  const display = root.querySelector('[data-settings-output="' + target.name + '"]');
+  if (display) display.textContent = Math.round(Number(target.value) * 100) + "%";
 });
 
 root.addEventListener("submit", async (event) => {
@@ -901,5 +976,5 @@ root.addEventListener("error", (event) => {
 }, true);
 
 setupTelegram();
-if(remoteRequested)authenticatePlayer();
+if(remoteRequested && remoteStatus==='connecting')authenticatePlayer();
 else render();

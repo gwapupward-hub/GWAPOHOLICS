@@ -43,6 +43,7 @@ export function createSensoryLayer({
   window: win = globalThis.window,
   telegram = win?.Telegram?.WebApp,
   AudioContext: AudioContextClass = win?.AudioContext || win?.webkitAudioContext,
+  renderControls = true,
   now = () => win?.performance?.now?.() ?? Date.now(),
   timers = { set: (...args) => win.setInterval(...args), clear: (id) => win.clearInterval(id) }
 } = {}) {
@@ -238,7 +239,7 @@ export function createSensoryLayer({
   }
 
   function renderSettings() {
-    if (!doc?.body) return;
+    if (!renderControls || !doc?.body) return;
     let host = doc.getElementById("sensory-controls");
     if (host) {
       const music = host.querySelector('[name="music"]'); const effects = host.querySelector('[name="effects"]'); const haptics = host.querySelector('[name="haptics"]');

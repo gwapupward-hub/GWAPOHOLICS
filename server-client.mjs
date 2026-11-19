@@ -54,3 +54,13 @@ export async function sendGameCommand({command,caseId,choiceId,answers,requestId
  requireSuccess(r);
  return hydratePlayerState(await r.json());
 }
+
+/** Clear the Mini App's signed session cookie. Does not sign out of Telegram or delete progress. */
+export async function logoutTelegramSession({fetcher=fetch}={}){
+  const result=await fetcher('/api/logout',{
+    method:'POST',credentials:'same-origin',cache:'no-store',
+    headers:authorizedHeaders(),body:'{}'
+  });
+  requireSuccess(result);
+  return true;
+}

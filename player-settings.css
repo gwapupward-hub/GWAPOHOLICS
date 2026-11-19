@@ -1,0 +1,62 @@
+/* Scoped GWAPOHOLICS v2.1 player settings. Designed for compact Telegram WebViews. */
+.settings-top-controls { display:flex; align-items:center; gap:7px; min-width:0; }
+.settings-access { width:40px; height:40px; min-width:40px; display:grid; place-items:center; color:#d8f5d5; background:#19291a; border:1px solid #487b46; border-radius:13px; cursor:pointer; font-size:23px; line-height:1; }
+.settings-access[aria-current="page"] { color:#111b11; background:#13dd13; border-color:#13dd13; }
+.settings-access:hover,.settings-access:focus-visible { border-color:#13dd13; }
+.player-settings-page { color:#eef9eb; padding-bottom:12px; }
+.settings-eyebrow { font:800 10px/1.5 system-ui,sans-serif; letter-spacing:.16em; color:#13dd13; margin:1px 0 11px; }
+.settings-head { margin-bottom:24px; }
+.settings-head h1 { font:900 clamp(50px,11vw,72px)/.95 'Barlow Condensed',Impact,sans-serif; letter-spacing:-.02em; margin:0; }
+.settings-head h1 span { color:#13dd13; }
+.settings-head p { margin:10px 0 0; color:#b1c5ae; font-size:14px; line-height:1.5; }
+.settings-group { border:1px solid #354b34; border-radius:18px; background:linear-gradient(145deg,#152017,#111811); margin:0 0 18px; overflow:hidden; }
+.settings-group-heading { padding:19px 17px 13px; border-bottom:1px solid #263b29; }
+.settings-group-heading h2 { margin:0 0 4px; color:#fff; font:900 22px/1.1 'Barlow Condensed',Impact,sans-serif; text-transform:uppercase; letter-spacing:.03em; }
+.settings-group-heading p { margin:0; color:#a6baa2; font-size:12px; line-height:1.45; }
+.settings-group-body { padding:2px 15px 7px; }
+.settings-row { display:flex; align-items:center; justify-content:space-between; min-height:66px; gap:12px; padding:12px 0; border-bottom:1px solid #2a3a2a; }
+.settings-row-copy { display:flex; flex-direction:column; gap:4px; max-width:calc(100% - 64px); }
+.settings-row-copy strong,.settings-link strong,.settings-static strong { font-size:14px; line-height:1.3; color:#f4fff1; font-weight:800; }
+.settings-row-copy small,.settings-link small,.settings-static small { color:#a9bca5; font-size:11px; line-height:1.5; font-weight:400; }
+.settings-toggle input[type="checkbox"] { appearance:none; -webkit-appearance:none; position:relative; flex:0 0 50px; width:50px; height:30px; border:1px solid #5c695b; border-radius:999px; background:#455244; cursor:pointer; transition:background .15s ease; }
+.settings-toggle input[type="checkbox"]::after { content:""; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 1px 4px #0008; transition:transform .15s ease; }
+.settings-toggle input[type="checkbox"]:checked { background:#13dd13; border-color:#13dd13; }
+.settings-toggle input[type="checkbox"]:checked::after { transform:translateX(20px); background:#082108; }
+.settings-range { display:block; border-bottom:1px solid #2a3a2a; padding:10px 0 17px; }
+.settings-range-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:6px; font-size:12px; }
+.settings-range-head output { color:#13dd13; font-weight:800; font-variant-numeric:tabular-nums; }
+.settings-range input { width:100%; height:30px; accent-color:#13dd13; cursor:pointer; }
+.settings-static { padding:15px 0; display:flex; flex-direction:column; gap:5px; border-bottom:1px solid #2a3a2a; }
+.settings-link { width:100%; display:flex; align-items:center; justify-content:space-between; gap:12px; padding:16px 0; text-align:left; background:none; color:#eaffea; border:0; border-bottom:1px solid #2a3a2a; cursor:pointer; }
+.settings-link>span:first-child { display:flex; flex-direction:column; gap:5px; }
+.settings-link>span:last-child { font-size:28px; color:#13dd13; }
+.settings-link:hover strong { color:#13dd13; }
+.settings-signout strong { color:#ffb5a4; }
+.settings-signout>span:last-child { color:#ff9984; }
+.settings-back { display:inline-flex; min-height:44px; align-items:center; background:none; border:0; padding:0; margin:0 0 16px; color:#13dd13; font-weight:800; cursor:pointer; }
+.settings-foot { color:#8eab8c; font-size:11px; line-height:1.6; margin:12px 2px 0; }
+.settings-copy { padding:10px 0; color:#c8d9c4; font-size:13px; line-height:1.65; }
+.settings-copy p { margin:10px 0; }
+.settings-confirm { box-sizing:border-box; width:min(380px,calc(100vw - 32px)); padding:24px 18px; border:1px solid #52694b; border-radius:18px; background:#131b14; color:#e6f3e3; box-shadow:0 16px 80px #000a; }
+.settings-confirm::backdrop { background:#000c; }
+.settings-confirm:not([open]) { display:none; }
+.settings-confirm h2 { font:900 26px/1.1 'Barlow Condensed',Impact,sans-serif; margin:0 0 8px; }
+.settings-confirm p { line-height:1.5; color:#b7c9b1; font-size:13px; }
+.settings-confirm-actions { display:flex; gap:10px; justify-content:flex-end; margin-top:20px; }
+.settings-confirm-actions button { border:1px solid #4d6847; background:#213323; color:white; border-radius:10px; min-height:44px; padding:0 14px; font-weight:800; cursor:pointer; }
+.settings-confirm-actions .settings-danger { color:#180907; background:#ff9b87; border-color:#ff9b87; }
+.settings-access:focus-visible,.player-settings-page button:focus-visible,.player-settings-page input:focus-visible,.settings-confirm button:focus-visible { outline:3px solid #13dd13; outline-offset:3px; }
+.signed-out-page { min-height:calc(100vh - 80px); display:flex; flex-direction:column; justify-content:center; gap:15px; padding:32px 24px; background:radial-gradient(ellipse at top,#173319,#090d09 60%); color:#ecffed; }
+.signed-out-page h1 { font:900 58px/1 'Barlow Condensed',Impact,sans-serif; margin:0; }
+.signed-out-page p { color:#bdd2b8; font-size:14px; line-height:1.6; }
+.signed-out-page button { min-height:48px; background:#13dd13; color:#082009; border:0; border-radius:13px; font-weight:900; cursor:pointer; }
+@media (max-width:370px) {
+  .settings-top-controls { gap:5px; }
+  .settings-access { width:34px; height:38px; min-width:34px; }
+  .settings-top-controls .arcade-wallet { padding:8px 7px; font-size:16px; }
+  .settings-group-body { padding-left:12px; padding-right:12px; }
+  .settings-head h1 { font-size:54px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  .settings-toggle input[type="checkbox"],.settings-toggle input[type="checkbox"]::after { transition:none; }
+}
