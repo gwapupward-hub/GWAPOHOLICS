@@ -37,11 +37,11 @@ for (const [name,engine] of ENGINES) {
       assert.equal(await page.getByRole('checkbox',{name:'Haptic feedback'}).isChecked(),false);
       assert.equal(await page.getByRole('checkbox',{name:'In-game notifications'}).isChecked(),false);
       await page.getByRole('button',{name:/privacy settings/i}).click();
-      assert.equal(await page.getByRole('heading',{name:/privacy/i}).count(),1);
+      assert.equal(await page.getByRole('heading',{level:1,name:/^privacy/i}).count(),1);
       await page.getByRole('checkbox',{name:'Hide header balance'}).check();
       await page.getByRole('button',{name:/back to settings/i}).click();
       await page.getByRole('button',{name:/terms & conditions/i}).click();
-      assert.equal(await page.getByRole('heading',{name:/terms/i}).count(),1);
+      assert.equal(await page.getByRole('heading',{level:1,name:/^terms/i}).count(),1);
       assert.match(await page.locator('.settings-copy').innerText(),/not a finalized or legally reviewed/i);
       assert.equal(errors.length,0,errors.join('\n'));
       await context.close();
