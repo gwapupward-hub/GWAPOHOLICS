@@ -10,6 +10,8 @@ async function firstDecision(engine,opts){
     viewport:opts.viewport,isMobile:true,hasTouch:true,deviceScaleFactor:2,
     reducedMotion:'reduce'
   });
+  // Exercise the immediate fallback layout without depending on external font latency.
+  if (engine === chromium) await ctx.route('https://fonts.googleapis.com/**', route => route.abort());
   const page=await ctx.newPage();
   const pageErrors=[];
   page.on('pageerror',e=>pageErrors.push(String(e)));
@@ -36,4 +38,38 @@ test('Android-sized Chromium touch flow: cinema, readable choices, reaction',asy
 });
 test('iPhone-sized WebKit touch flow: cinema, safe controls, reaction',async()=>{
  await firstDecision(webkit,{viewport:{width:375,height:812}});
+});
+
+test('iPhone fullscreen Telegram sign-in screen clears native top controls',async()=>{
+ const browser=await webkit.launch({headless:true});
+ try{
+  const ctx=await browser.newContext({viewport:{width:393,height:852},isMobile:true,hasTouch:true,deviceScaleFactor:2,reducedMotion:'reduce'});
+  await ctx.addInitScript(()=>{
+    window.Telegram={WebApp:{
+      initData:'mock-initdata-from-test-bot',isFullscreen:true,isExpanded:true,
+      safeAreaInset:{top:59,bottom:34,left:0,right:0},
+      contentSafeAreaInset:{top:56,bottom:0,left:0,right:0},
+      viewportStableHeight:852,viewportHeight:852,
+      ready(){},expand(){},setHeaderColor(){},setBackgroundColor(){},onEvent(){},
+      BackButton:{onClick(){},show(){},hide(){}},
+      HapticFeedback:{impactOccurred(){},notificationOccurred(){}}
+    }};
+  });
+  await ctx.route('https://telegram.org/js/**',route=>route.fulfill({status:200,contentType:'application/javascript',body:'/* mocked Telegram */'}));
+  await ctx.route('**/api/session',route=>route.fulfill({status:401,contentType:'application/json',body:'{"error":"invalid_telegram_launch"}'}));
+  const page=await ctx.newPage();
+  const errors=[];page.on('pageerror',e=>errors.push(String(e)));
+  const url=new URL(BASE);url.searchParams.delete('demo');
+  await page.goto(url.href,{waitUntil:'domcontentloaded'});
+  await page.locator('.arcade-title').waitFor();
+  await page.waitForFunction(()=>document.querySelector('.arcade-hook')?.textContent?.includes('Telegram verification failed'));
+  await page.waitForFunction(()=>Array.from(document.styleSheets).some(sheet=>sheet.href?.endsWith('/telegram-fullscreen.css')));
+  const box=await page.locator('.arcade-title').boundingBox();
+  assert.ok(box && box.y>=125,'sign-in heading must be below fullscreen Telegram controls, got '+box?.y);
+  assert.equal(await page.evaluate(()=>document.documentElement.classList.contains('telegram-fullscreen')),true);
+  const bottom=await page.evaluate(()=>getComputedStyle(document.documentElement).getPropertyValue('--gwap-telegram-bottom').trim());
+  assert.equal(bottom,'34px');
+  assert.equal(errors.length,0,errors.join('\n'));
+  await ctx.close();
+ }finally{await browser.close();}
 });

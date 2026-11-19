@@ -9,7 +9,6 @@ GWAPOHOLICS is a cinematic, Telegram-native business education game from Tha Gwa
 The `feat/v1-private-beta-release-candidate` branch is an implemented, tested **v1.0.0 release candidate**, not a production launch. Preview authentication and persistence are enabled for the private `@TestGwap_bot` only. The official `@GwapoholicsBot`, Vercel production, `main` and the owned `gwapoholics.ton` domain have not been updated.
 
 - [Private test bot: @TestGwap_bot](https://t.me/TestGwap_bot) — open the Mini App inside Telegram for authenticated progress.
-- [Browser-only cinematic demo](https://gwap-telegram-business-1i0jiycu2-bigdaddygwaps-projects.vercel.app/?demo=1) — uses local demo data, not a real player account.
 - [Draft v1 release PR](https://github.com/gwapupward-hub/GWAPOHOLICS/pull/11) — targets `main`, must not merge without separate founder approval.
 - [Release acceptance and operations runbook](docs/V1_RELEASE_RUNBOOK.md)
 - [Adobe character and scene board](https://firefly.adobe.com/boards/id/urn:aaid:sc:US:32f3155f-9932-4f18-a211-0ea55372e883)
@@ -49,9 +48,9 @@ CI on the release branch runs `baseline`, `mobile-engines`, and `postgres-ledger
 
 See [Authenticated API](docs/AUTHENTICATED_API.md) for request contract and deployment constraints.
 
-## v2.1-A Founder Entry (Sprint 1, feature-flagged, default off)
+## v2.1 Build Your Empire (feature-flagged, default off)
 
-A server-authoritative Origin → Founder Hub foundation for The Business Underworld. Off unless `GWAP_V2_FOUNDER_HUB=1`; not applied to any database. See [developer guide](docs/V2_1A_FOUNDER_ENTRY.md), [review and conflict register](docs/V2_1A_SPRINT1_REVIEW.md), [event contracts](docs/V2_1A_EVENT_CONTRACTS.md), [migration and rollback](docs/V2_1A_MIGRATION_AND_ROLLBACK.md) the [Sprint 2 handoff](docs/V2_1A_SPRINT2_HANDOFF.md), the [seed-variance analysis](docs/V2_1A_SEED_VARIANCE.md) and the [readiness assessment](docs/V2_1A_SPRINT1_READINESS.md).
+The Founder Hub, first business, operating cycles and capacity expansion use server-authoritative receipts. Development and restore tests use disposable databases. The inspected connected Neon Preview still uses the v1 schema. See [developer guide](docs/V2_1A_FOUNDER_ENTRY.md), [review and conflict register](docs/V2_1A_SPRINT1_REVIEW.md), [event contracts](docs/V2_1A_EVENT_CONTRACTS.md), [migration and rollback](docs/V2_1A_MIGRATION_AND_ROLLBACK.md), the [v2.1 engineering, economy and release handoff](docs/V2_1A_SPRINT2_HANDOFF.md), the [seed-variance analysis](docs/V2_1A_SEED_VARIANCE.md) and the [readiness assessment](docs/V2_1A_SPRINT1_READINESS.md).
 
 ## Remaining release acceptance
 

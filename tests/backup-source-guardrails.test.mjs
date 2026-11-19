@@ -23,8 +23,8 @@ function archiveInput(rowCounts) {
   ].join('\n')).join('\n') + '\n';
 }
 
-function archiveCheck(input) {
-  return spawnSync(process.execPath, ['scripts/audit-backup-copy.mjs'], {
+function archiveCheck(input, ...versions) {
+  return spawnSync(process.execPath, ['scripts/audit-backup-copy.mjs', ...versions], {
     cwd, input, encoding: 'utf8'
   });
 }
@@ -77,4 +77,11 @@ test('scheduled upload is guarded by source identity and archived public game da
   assert.match(workflow, /pg_restore --data-only --schema=public/);
   assert.ok(workflow.indexOf('scripts/audit-backup-copy.mjs') <
     workflow.indexOf('Encrypt and upload immutable backup'));
+});
+
+
+test('a populated legacy archive cannot stand in for a source with operating records',()=>{
+  const input=archiveInput({players:1,quest_runs:1,virtual_ledger:2,command_receipts:5});
+  assert.notEqual(archiveCheck(input,'4').status,0);
+  assert.equal(archiveCheck(input,'1').status,0);
 });

@@ -6,6 +6,14 @@
 
 export const SENSORY_SETTINGS_KEY = "gwapoholics.sensory.v1";
 export const IMPACT_THROTTLE_MS = 60;
+// Original ascending tempo map. Four server-confirmed decisions reach the climax.
+export const CINEMATIC_TEMPOS_BPM = Object.freeze([64, 78, 94, 112, 136]);
+export function cinematicTempo(completed = 0, total = 4) {
+  const count = Number.isFinite(Number(completed)) ? Math.max(0, Number(completed)) : 0;
+  const length = Number.isFinite(Number(total)) ? Math.max(1, Number(total)) : 4;
+  const level = Math.min(4, Math.floor((Math.min(count, length) / length) * 4 + 0.000001));
+  return CINEMATIC_TEMPOS_BPM[level];
+}
 const DEFAULTS = Object.freeze({ music: true, musicVolume: 0.18, effects: true, effectsVolume: 0.32, haptics: true });
 const clamp = (value, min, max) => Number.isFinite(Number(value)) ? Math.min(max, Math.max(min, Number(value))) : min;
 
@@ -43,6 +51,7 @@ export function createSensoryLayer({
   window: win = globalThis.window,
   telegram = win?.Telegram?.WebApp,
   AudioContext: AudioContextClass = win?.AudioContext || win?.webkitAudioContext,
+  renderControls = true,
   now = () => win?.performance?.now?.() ?? Date.now(),
   timers = { set: (...args) => win.setInterval(...args), clear: (id) => win.clearInterval(id) }
 } = {}) {
@@ -55,6 +64,10 @@ export function createSensoryLayer({
   let disposed = false;
   let musicTimer = null;
   let musicStep = 0;
+  let decisionProgress = 0;
+  let decisionTotal = 4;
+  let decisionScope = "";
+  const revealedResults = new Set();
   let lastImpactAt = -Infinity;
   let lastScene = "";
   let mood = "menu";
@@ -137,6 +150,7 @@ export function createSensoryLayer({
     tension: [98, 146.83, 196, 146.83, 103.83, 155.56, 207.65, 155.56],
     danger: [82.41, 123.47, 164.81, 123.47, 87.31, 130.81, 174.61, 130.81],
     victory: [164.81, 246.94, 329.63, 392, 196, 293.66, 392, 493.88],
+    resolve: [130.81, 164.81, 196, 261.63, 146.83, 196, 246.94, 293.66],
     founder: [123.47, 185, 246.94, 185, 146.83, 220, 293.66, 220]
   });
   function setMood(next) {
@@ -150,34 +164,97 @@ export function createSensoryLayer({
     // Synthesize a short dip and swell instead of cutting between themes.
     musicBus.gain.setTargetAtTime(0, at, 0.09);
     musicBus.gain.setTargetAtTime(settings.music ? settings.musicVolume : 0, at + 0.25, 0.15);
-    musicTick();
+    restartMusic();
   }
-  function playTone(frequency, duration, destination, { type = "sine", volume = 0.08, delay = 0, endFrequency = frequency } = {}) {
+  function playTone(frequency, duration, destination, {
+    type = "sine", volume = 0.08, delay = 0, endFrequency = frequency, attack = 0.025
+  } = {}) {
     if (!context || !destination || disposed) return;
     try {
       const start = context.currentTime + delay;
-      const osc = context.createOscillator(); const gain = context.createGain();
-      osc.type = type; osc.frequency.setValueAtTime(frequency, start);
+      const osc = context.createOscillator(), gain = context.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(frequency, start);
       if (endFrequency !== frequency) osc.frequency.exponentialRampToValueAtTime(Math.max(1, endFrequency), start + duration);
-      gain.gain.setValueAtTime(0.0001, start); gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), start + 0.025);
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, volume), start + Math.min(duration * .4, attack));
       gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-      osc.connect(gain); gain.connect(destination); osc.start(start); osc.stop(start + duration + 0.03);
-      osc.onended = () => { try { osc.disconnect(); gain.disconnect(); } catch { /* already disconnected */ } };
+      // A gentle low-pass softens bright sawtooth harmonics into a bowed-string texture.
+      const filter = typeof context.createBiquadFilter === "function" ? context.createBiquadFilter() : null;
+      if (filter) { filter.type = "lowpass"; filter.frequency.value = 1350; }
+      osc.connect(filter || gain);
+      if (filter) filter.connect(gain);
+      gain.connect(destination);
+      osc.start(start); osc.stop(start + duration + 0.03);
+      osc.onended = () => { try { osc.disconnect(); filter?.disconnect(); gain.disconnect(); } catch { /* optional */ } };
     } catch { /* Web Audio is an optional enhancement */ }
+  }
+  function playString(frequency, duration, destination, { volume = 0.045, delay = 0, attack = 0.14 } = {}) {
+    // Two quiet, slightly detuned synthesizer voices imitate a small string section.
+    playTone(frequency, duration, destination, { type: "sawtooth", volume: volume * .52, delay, attack });
+    playTone(frequency * 1.003, duration * .97, destination, { type: "triangle", volume: volume, delay, attack: attack * .8 });
   }
   function musicTick() {
     if (!context || !unlocked || context.state !== "running" || !settings.music || doc?.visibilityState === "hidden") return;
     const pattern = moods[mood];
     const note = pattern[musicStep % pattern.length];
-    playTone(note, 1.65, musicBus, { volume: 0.11, type: "sine" });
-    if (musicStep % 4 === 0) playTone(note / 2, 2.8, musicBus, { volume: 0.13, type: "triangle" });
+    const beatSeconds = 60 / cinematicTempo(decisionProgress, decisionTotal);
+    // Slow swells at the beginning become a driving ostinato as the player advances.
+    playString(note, Math.max(.38, Math.min(1.45, beatSeconds * 1.9)), musicBus,
+      { volume: mood === "tension" ? .055 : .043, attack: .09 });
+    if (musicStep % 4 === 0) playString(note / 2, Math.min(2.2, beatSeconds * 3.5), musicBus,
+      { volume: .047, attack: .22 });
     musicStep += 1;
   }
   function startMusic() {
     if (!context || !unlocked || context.state !== "running" || musicTimer !== null || !settings.music || doc?.visibilityState === "hidden") return;
-    musicTick(); musicTimer = timers.set(musicTick, 1800);
+    musicTick();
+    musicTimer = timers.set(musicTick, Math.round(60000 / cinematicTempo(decisionProgress, decisionTotal)));
   }
-  function stopMusic() { if (musicTimer !== null) { timers.clear(musicTimer); musicTimer = null; } }
+  function stopMusic() {
+    if (musicTimer !== null) { timers.clear(musicTimer); musicTimer = null; }
+  }
+  function restartMusic() {
+    stopMusic();
+    startMusic();
+  }
+  function setDecisionProgress(completed, total = 4, scope = "") {
+    const nextScope = String(scope || "");
+    const count = Number.isFinite(Number(completed)) ? Number(completed) : 0;
+    const length = Number.isFinite(Number(total)) ? Math.max(1, Math.round(Number(total))) : 4;
+    const previous = cinematicTempo(decisionProgress, decisionTotal);
+    const next = Math.max(0, Math.min(length, Math.floor(count)));
+    const scopeChanged = nextScope !== decisionScope;
+    if (scopeChanged) decisionScope = nextScope;
+    if (!scopeChanged && next === decisionProgress && length === decisionTotal) return previous;
+    decisionProgress = next;
+    decisionTotal = length;
+    const bpm = cinematicTempo(decisionProgress, decisionTotal);
+    if (bpm !== previous) restartMusic();
+    return bpm;
+  }
+  function playResultFanfare(delta, key) {
+    const identity = String(key || "unknown");
+    if (revealedResults.has(identity)) return false;
+    revealedResults.add(identity);
+    const won = Number(delta) > 0;
+    // The payoff waits until the confirmed money/score result actually enters view.
+    // Positive outcomes get a bright original fanfare; setbacks resolve with dignity.
+    if (settings.music && unlocked && context?.state === "running" && doc?.visibilityState !== "hidden") {
+      setMood(won ? "victory" : "resolve");
+      const phrases = won
+        ? [[261.63, 0], [329.63, .2], [392, .42], [523.25, .68], [659.25, 1.02], [783.99, 1.35]]
+        : [[196, 0], [246.94, .26], [293.66, .56], [392, .98]];
+      for (const [hz, delay] of phrases) {
+        playString(hz, won ? .76 : 1.05, musicBus, { volume: won ? .16 : .10, delay, attack: .11 });
+      }
+      const finalDelay = won ? 1.54 : 1.23;
+      const chord = won ? [261.63, 329.63, 392, 523.25] : [196, 246.94, 293.66];
+      for (const hz of chord) playString(hz, 1.6, musicBus, { volume: won ? .14 : .09, delay: finalDelay, attack: .23 });
+    }
+    playEffect(won ? "success" : "soft");
+    return true;
+  }
   function playEffect(kind) {
     if (!settings.effects || !unlocked || !context || context.state !== "running" || doc?.visibilityState === "hidden") return;
     const sounds = {
@@ -211,19 +288,21 @@ export function createSensoryLayer({
     lastScene = signature;
     if (step === "details") playEffect("reveal");
     else if (step === "choices") playEffect("soft");
-    if (step === "background") {
-      const sceneMood = shot.phase === "decision" ? "tension" :
-        shot.phase === "consequence" ? "danger" :
-        shot.phase === "result" ? (shot.effect === "victory" ? "victory" : "danger") : "mission";
+    if (step === "background" || (step === "choices" && shot.phase === "result")) {
+      const parts = String(shot.key || "").split(":");
+      const scope = parts[0] === "og" ? parts.slice(0, 2).join(":") : parts[0];
+      setDecisionProgress(shot.progress?.done ?? 0, shot.progress?.total ?? 4, scope);
+      const sceneMood = shot.phase === "decision" || shot.phase === "consequence" ? "tension" :
+        shot.phase === "result" ? (Number(shot.delta ?? 0) > 0 ? "victory" : "resolve") : "mission";
       setMood(sceneMood);
     }
   }
   function onConfirmedOutcome(delta, eventKey) {
     if (eventKey && settledCues.has(eventKey)) return false;
     if (eventKey) settledCues.add(eventKey);
-    const good = Number(delta) >= 0;
-    playEffect(good ? "success" : "impact");
-    hapticEvent("notificationOccurred", good ? "success" : "warning");
+    const good = Number(delta) > 0;
+    // Result music and success effects begin on money-reveal, not before render.
+    if (delta !== 0) hapticEvent("notificationOccurred", good ? "success" : "warning");
     return true;
   }
   function onGesture() { ensureAudio(); }
@@ -238,7 +317,7 @@ export function createSensoryLayer({
   }
 
   function renderSettings() {
-    if (!doc?.body) return;
+    if (!renderControls || !doc?.body) return;
     let host = doc.getElementById("sensory-controls");
     if (host) {
       const music = host.querySelector('[name="music"]'); const effects = host.querySelector('[name="effects"]'); const haptics = host.querySelector('[name="haptics"]');
@@ -295,13 +374,16 @@ export function createSensoryLayer({
   return {
     get settings() { return { ...settings }; },
     get mood() { return mood; },
+    get tempoBpm() { return cinematicTempo(decisionProgress, decisionTotal); },
     setSettings(patch) { settings = normalizeSensorySettings({ ...settings, ...patch }); persist(); updateBuses(); renderSettings(); return { ...settings }; },
-    setMood, onSceneStep, onConfirmedOutcome,
+    setMood, setDecisionProgress, onSceneStep, onConfirmedOutcome,
+    onResultReveal(delta, key) { return playResultFanfare(delta, key); },
     hapticImpact(kind = "light") { return hapticEvent("impactOccurred", kind); },
     hapticNotification(kind = "success") { return hapticEvent("notificationOccurred", kind); },
     hapticSelection() { return hapticEvent("selectionChanged"); },
     playEffect,
     resume() { return ensureAudio(); },
+    pause() { stopMusic(); try { void context?.suspend?.().catch?.(() => {}); } catch { /* optional */ } },
     dispose() { disposed = true; stopMusic(); listeners.splice(0).forEach((remove) => remove()); try { void context?.close?.(); } catch { /* optional */ } }
   };
 }

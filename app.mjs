@@ -1,6 +1,8 @@
 import { BOT_USERNAME } from "./config.mjs";
 import { createSensoryLayer } from "./sensory-layer.mjs";
-import { startTelegramSession, refreshPlayer, sendGameCommand } from "./server-client.mjs";
+import { syncTelegramFrame } from "./telegram-frame.mjs";
+import { loadPlayerSettings, savePlayerSettings, isManuallySignedOut, setManualSignout, renderPlayerSettings, renderPrivacyPage, renderTermsPage } from "./player-settings.mjs";
+import { startTelegramSession, refreshPlayer, sendGameCommand, logoutTelegramSession } from "./server-client.mjs";
 import { homeNarrator, cinematicMotionClass, toggleCinematicMotion, storyMotionEnabled, storyStage, introPanel, decisionPanel, consequencePanel, resultPanel, resultScore } from "./cinematic-view.mjs";
 import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARACTERS, CHARACTER_ART, storyAssetExt } from "./story-runtime.mjs";
 import { createSceneDirector, SCENE_STEPS, EXIT_STEPS } from "./story-director.mjs";
@@ -18,16 +20,21 @@ import {
   playableCases, evidenceFor
 } from "./game-core.mjs";
 
+// Local layout and Telegram safe areas work before the optional web fonts arrive.
+const fontSheet = document.getElementById("game-fonts");
+if (fontSheet) fontSheet.media = "all";
 const root = document.querySelector("#app");
 // A single presentation-only controller handles every audio and haptic cue.
-const sensory = createSensoryLayer();
+const sensory = createSensoryLayer({ renderControls: false });
+const playerSettings = loadPlayerSettings();
 const tg = window.Telegram?.WebApp;
 const isTelegram = Boolean(tg?.initData);
 const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname) || location.protocol === "file:";
-const explicitDemo = new URLSearchParams(location.search).get("demo") === "1";
-const canPlay = isTelegram || localPreview || explicitDemo;
+const explicitDemo = localPreview && new URLSearchParams(location.search).get("demo") === "1";
+const canPlay = isTelegram || localPreview;
 const remoteRequested = isTelegram && !explicitDemo;
-let remoteStatus = remoteRequested ? "connecting" : "demo";
+let remoteStatus = remoteRequested ? (isManuallySignedOut() ? "signedOut" : "connecting") : "demo";
+let remoteFailure = '';
 let pendingCommand = null;
 
 const esc = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -50,6 +57,7 @@ let selectedChoice = null;
 let toast = null;
 let resetArmed = false;
 let moveBusy = false;
+let logoutBusy = false;
 
 // v2.1-A Founder Entry. `founder` is always the server's latest snapshot; null/disabled leaves v1 untouched.
 let founder = null;
@@ -79,10 +87,15 @@ function setupTelegram() {
     const syncViewport = () => {
       const h = tg.viewportStableHeight || tg.viewportHeight;
       if (h) document.documentElement.style.setProperty("--app-height", `${h}px`);
+      syncTelegramFrame(tg, document);
     };
     syncViewport();
-    tg.onEvent?.("viewportChanged", syncViewport);
+    for (const event of ["viewportChanged", "safeAreaChanged", "contentSafeAreaChanged", "fullscreenChanged"]) {
+      try { tg.onEvent?.(event, syncViewport); } catch { /* older Telegram clients */ }
+    }
     tg.BackButton?.onClick(() => {
+      if (view === "privacy" || view === "terms") { changeView("settings"); return; }
+      if (view === "settings") { changeView("home"); return; }
       if (view === "origin" || view === "graduation") { openFounderHome(); return; }
       if (view === "scenario" && stage === "decide" && !game.draft?.path.length) { stage = "brief"; selectedChoice = null; render(); return; }
       changeView("home");
@@ -91,7 +104,7 @@ function setupTelegram() {
 }
 
 function backButton() {
-  try { if (view === "scenario" || view === "recovery" || view === "origin" || view === "graduation") tg?.BackButton?.show(); else tg?.BackButton?.hide(); }
+  try { if (view === "scenario" || view === "recovery" || view === "origin" || view === "graduation" || view === "settings" || view === "privacy" || view === "terms") tg?.BackButton?.show(); else tg?.BackButton?.hide(); }
   catch { /* browser preview */ }
 }
 
@@ -109,7 +122,8 @@ function renderToast() {
   toastHost.innerHTML = toast ? `<div class="toast" role="alert">${esc(toast)}</div>` : "";
 }
 
-function showToast(message) {
+function showToast(message, { optional = false } = {}) {
+  if (optional && !playerSettings.notifications) return;
   toast = message;
   renderToast();
   window.setTimeout(() => { if (toast === message) { toast = null; renderToast(); } }, 3800);
@@ -148,12 +162,25 @@ async function resyncRemote(){
   catch{showToast('Connection interrupted. Confirmed progress is saved on the server.')}
 }
 async function authenticatePlayer(){
+  remoteFailure='';
   remoteStatus='connecting';render();
   try{
     game=await startTelegramSession(tg?.initData);
+    setManualSignout(false);
     remoteStatus='ready';view='home';caseId=null;stage='brief';
-  }catch{
+  }catch(error){
     remoteStatus='failed';
+    if(error?.stage==='game_load' && error?.status===503) {
+      remoteFailure='Telegram verification could not finish loading the player account because this Preview game service is unavailable. An isolated test database connection is required for this branch. Your saved G progress has not been reset.';
+    }else if(error?.stage==='telegram_auth' && error?.status===401) {
+      remoteFailure='Telegram verification failed. The Mini App and the Preview server must use the same bot token. Reopening will not help until the bot configuration is corrected.';
+    }else if(error?.stage==='telegram_auth' && error?.status===403) {
+      remoteFailure='The Preview rejected the sign-in request. Open the Mini App through its Telegram bot and try again.';
+    }else if(error?.stage==='game_load' && error?.status===401) {
+      remoteFailure='The game session did not persist. Close and reopen this Mini App inside Telegram.';
+    }else {
+      remoteFailure='This Preview cannot complete secure sign-in. The player data service or Telegram authentication may be unavailable; your saved progress has not been reset.';
+    }
   }
   render();
   if(remoteStatus==='ready')loadFounder();
@@ -168,7 +195,7 @@ function changeView(next) {
   stage = "brief";
   haptic();
   render();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
 }
 
 function openCase(id) {
@@ -185,7 +212,7 @@ function openCase(id) {
   selectedChoice = null;
   haptic();
   render();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
 }
 
 function getCase() { return CASES.find((entry) => entry.id === caseId); }
@@ -198,7 +225,7 @@ function activeCase() {
 
 function dotLogo(){return '<img src="./brand.svg" class="arcade-mark" alt="" width="42" height="42">';}
 
-function topbar(wallet={balance:game.balance}){return `<header class="topbar arcade-top"><div class="brand-lockup">${dotLogo()}<div class="arcade-wordmark"><strong>GWAPOHOLICS</strong><small>THE BUSINESS GAME</small></div></div><div class="arcade-wallet" ${wallet.caption?`aria-label="${esc(wallet.caption)} ${coins(wallet.balance)} G"`:""}><b>◉</b> ${coins(wallet.balance)}<small>G</small>${wallet.caption?`<i class="arcade-wallet-cap">${esc(wallet.caption)}</i>`:""}</div></header>`;}
+function topbar(wallet={balance:game.balance}){return `<header class="topbar arcade-top"><div class="brand-lockup">${dotLogo()}<div class="arcade-wordmark"><strong>GWAPOHOLICS</strong><small>THE BUSINESS GAME</small></div></div><div class="settings-top-controls"><div class="arcade-wallet" ${playerSettings.hideHeaderBalance?`aria-label="Header balance hidden"`:wallet.caption?`aria-label="${esc(wallet.caption)} ${coins(wallet.balance)} G"`:""}><b>◉</b> ${playerSettings.hideHeaderBalance?"••••":coins(wallet.balance)}<small>G</small>${wallet.caption?`<i class="arcade-wallet-cap">${esc(wallet.caption)}</i>`:""}</div><button type="button" class="settings-access" data-action="nav" data-view="settings" aria-label="Open game settings" ${["settings","privacy","terms"].includes(view)?'aria-current="page"':""}>⚙</button></div></header>`;}
 
 function bottomnav(){return `<nav class="bottomnav arcade-nav${founderEnabled?" has-founder":""}">${[["home","PLAY","◆"],["cases","MISSIONS","▦"],...(founderEnabled?[["founder","FOUNDER","★"]]:[]),["profile","YOU","◉"]].map(([key,label,glyph])=>`<button class="tab ${view===key?"active":""}" data-action="nav" data-view="${key}"><span class="tab-icon">${glyph}</span><span>${label}</span></button>`).join("")}</nav>`;}
 
@@ -284,6 +311,7 @@ function profilePage() {
       const width = Math.max(6, Math.min(100, 50 + dim.score * 5));
       return `<div class="dimension"><div class="dimension-title"><span><b>${String(i + 1).padStart(2, "0")}</b> ${esc(dim.name)}</span><span>${dim.score > 0 ? "+" : ""}${dim.score}</span></div><div class="dimension-bar"><span style="width:${width}%"></span></div><small>${esc(dim.short)}</small></div>`;
     }).join("")}</div>
+    <button type="button" class="settings-link" data-action="nav" data-view="settings" aria-label="Open game settings"><span><strong>GAME SETTINGS</strong><small>Sound, feedback, privacy and account</small></span><span aria-hidden="true">›</span></button>
     <div class="tip-panel">This is a reflection tool, not a financial aptitude test. Values represent the tendencies in your ${count || "future"} simulated decision${count === 1 ? "" : "s"}.</div>
     ${isTelegram ? "" : `<button class="cta secondary reset-button" data-action="reset">${resetArmed ? "TAP AGAIN TO RESET THE PREVIEW" : "RESET LOCAL PREVIEW DATA"}</button>`}
   </div>`;
@@ -390,7 +418,7 @@ function storyShot(entry) {
     const result = visibleResult(entry, run);
     const direction = sceneDirection(entry.id, "result", { band: result.band });
     const scene = narrativeScene(entry.id, "result", { band: result.band });
-    return { ...base, key: `${entry.id}:result`, phase: "result", direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
+    return { ...base, key: `${entry.id}:result`, phase: "result", delta: run.delta, direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
       lines: [scene.line, `Lesson: ${entry.takeaway}`], overlay: resultScore(run.delta),
       panel: resultPanel({ run, result, next: playableCases(game)[0], locked: isLocked(game) }),
       label: `${entry.title}: result`, ribbon: ribbon(direction), progress: { label: "MISSION COMPLETE", total, done: total, current: -1 } };
@@ -487,7 +515,13 @@ function applyStoryStep(step) {
   const order = [...SCENE_STEPS, ...EXIT_STEPS];
   const reached = order.indexOf(step);
   order.forEach((name, i) => el.classList.toggle(`at-${name}`, i <= reached));
-  if (step === "enter" && story.countOnEnter) { story.countOnEnter = false; countUp(el.querySelector(".count-value"), true); }
+  if ((step === "enter" || step === "choices") && story.countOnEnter && story.currentShot?.phase === "result") {
+    story.countOnEnter = false;
+    // The result has already been confirmed by the game server or local simulation.
+    // Celebrate only as its displayed money/score begins the visual count.
+    sensory.onResultReveal(story.currentShot.delta ?? 0, story.currentShot.key);
+    if (step === "enter") countUp(el.querySelector(".count-value"), true);
+  }
   if (step === "typing") story.typer?.start();
   if (step === "choices") {
     if (story.countOnEnter) story.countOnEnter = false; // motion off: keep the static settled number
@@ -521,17 +555,26 @@ async function commitChoice(id) {
       if (game.played.some(run=>run.caseId===caseId)) {
         stage="result";countPending=true;
         sensory.onConfirmedOutcome(game.played.find((run) => run.caseId === caseId).delta, `v1:${caseId}`);
-      } else { stage="beat"; sensory.playEffect("confirm"); }
+      } else {
+        stage="beat";
+        sensory.setDecisionProgress(game.draft?.path?.length ?? 0, current.stages.length, caseId);
+        sensory.playEffect("confirm");
+      }
     } else {
       game = chooseStep(game, caseId, id);
       if (game.draft.path.length === current.stages.length) {
         game = completeChain(game, caseId);
         stage = "result";countPending=true;
         sensory.onConfirmedOutcome(game.played.find((run) => run.caseId === caseId).delta, `v1:${caseId}`);
-      } else { stage = "beat"; sensory.playEffect("confirm"); }
+      } else {
+        stage = "beat";
+        sensory.setDecisionProgress(game.draft?.path?.length ?? 0, current.stages.length, caseId);
+        sensory.playEffect("confirm");
+      }
       persist();
     }
-    render(); if (!story.active) window.scrollTo({ top: 0, behavior: "smooth" });
+    if (stage === "result") showToast("Mission complete. Review your results.", { optional: true });
+    render(); if (!story.active) window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
   } catch (error) { showToast(error.message); if(game.remote)await resyncRemote(); }
   finally { moveBusy = false; }
 }
@@ -556,12 +599,17 @@ function chooseInStory(button) {
 
 function render(options = {}) {
   hubTyper?.dispose(); hubTyper = null;
+  if(remoteRequested && remoteStatus==='signedOut') {
+    leaveStory();
+    root.innerHTML='<main class="app-shell"><div class="app-inner"><section class="signed-out-page"><h1>SESSION ENDED.</h1><p>Your server-saved G coins and gameplay are preserved. Sign in again with this Telegram account to resume. This does not log out of Telegram itself.</p><button type="button" data-action="auth-retry">SIGN IN WITH TELEGRAM</button></section></div></main>';
+    return;
+  }
   if(remoteRequested && remoteStatus!=='ready'){
     leaveStory();
     const msg=remoteStatus==='connecting'
       ? 'Verifying your Telegram account and retrieving your progress.'
-      : 'Secure sign-in is unavailable. Your virtual coins have not changed.';
-    root.innerHTML='<main class="app-shell"><div class="app-inner"><section class="arcade-flow page-enter" style="padding:28px 18px"><h1 class="arcade-title">GWAPOHOLICS.</h1><p class="arcade-hook">'+msg+'</p><button class="arcade-button" data-action="auth-retry">RETRY SECURE SIGN-IN →</button><p class="arcade-fine">For local playtesting only use ?demo=1. Demo coins do not become live account coins.</p></section></div></main>';
+      : remoteFailure || 'Secure sign-in is unavailable. Your virtual coins have not changed.';
+    root.innerHTML='<main class="app-shell"><div class="app-inner"><section class="arcade-flow page-enter" style="padding:28px 18px"><h1 class="arcade-title">GWAPOHOLICS.</h1><p class="arcade-hook">'+esc(msg)+'</p><button class="arcade-button" data-action="auth-retry">RETRY SECURE SIGN-IN →</button><p class="arcade-fine">For local playtesting only use ?demo=1. Demo coins do not become live account coins.</p></section></div></main>';
     return;
   }
   if (!canPlay) { leaveStory(); root.innerHTML = `<main class="app-shell"><div class="app-inner">${gatePage()}</div></main>`; return; }
@@ -571,6 +619,9 @@ function render(options = {}) {
   if (view === "home") content = welcome();
   else if (view === "cases") content = caseList();
   else if (view === "profile") content = profilePage();
+  else if (view === "settings") content = renderPlayerSettings({ sound: sensory.settings, prefs: playerSettings, telegram: remoteRequested });
+  else if (view === "privacy") content = renderPrivacyPage(playerSettings);
+  else if (view === "terms") content = renderTermsPage();
   else if (view === "ledger") content = ledgerPage();
   else if (view === "recovery") content = recoveryPage();
   else if (view === "founder" || view === "origin" || view === "graduation") content = founderPage();
@@ -586,7 +637,14 @@ function render(options = {}) {
   root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar(view === "founder" && founder ? { balance: founder.capital.balanceG, caption: "STARTUP CAPITAL" } : undefined)}<div class="prototype-tag"><span>◉</span> ${game.remote ? "VERIFIED TELEGRAM PLAYER · VIRTUAL COINS" : "PLAYTEST · LOCAL-ONLY COINS"} · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
   backButton();
   if (view === "founder") bindHubTypewriter();
-  if (countPending) { countPending = false; countUp(); }
+  if (countPending) {
+    countPending = false;
+    if (view === "scenario" && stage === "result") {
+      const resultRun = game.played.find((item) => item.caseId === caseId);
+      if (resultRun) sensory.onResultReveal(resultRun.delta, `v1:${caseId}:result`);
+    }
+    countUp();
+  }
 }
 
 /* ------------------------------------------------------------------------- *
@@ -632,10 +690,10 @@ async function openFounderHome() {
   if (fresh) founder = fresh;
   if (!founder) { changeView("home"); return; }
   const graduated = founder.origin?.graduation?.status === "graduated";
-  view = graduated && !founder.founder.enteredHub && !founder.origin.openRun ? "graduation" : "founder";
+  view = graduated && founder.quest && founder.origin.policy && !founder.founder.enteredHub && !founder.origin.openRun ? "graduation" : "founder";
   originCaseId = null; caseId = null; selectedChoice = null; haptic();
   render();
-  if (view === "founder") window.scrollTo({ top: 0, behavior: "smooth" });
+  if (view === "founder") window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
 }
 
 function bindHubTypewriter() {
@@ -659,7 +717,7 @@ function originStoryShot(entry) {
     const direction = sceneDirection(entry.id, "result", { band: row.result.band });
     const scene = narrativeScene(entry.id, "result", { band: row.result.band });
     const nextEntry = founderQuests().find((item) => !q.completed.some((c) => c.caseId === item.id));
-    return { ...base, key: `og:${entry.id}:result`, phase: "result", direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
+    return { ...base, key: `og:${entry.id}:result:${q.runNumber}`, phase: "result", delta: row.outcomeSign ?? 0, direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
       lines: [scene.line, `Lesson: ${entry.takeaway}`], overlay: originScoreOverlay(row),
       panel: originQuestResultPanel({ row, state: founder, nextEntry }),
       label: `${entry.title}: Origin result`, ribbon: ribbon(direction), progress: { label: "QUEST COMPLETE", total, done: total, current: -1 } };
@@ -696,7 +754,7 @@ function graduationShot() {
   const max = founder.origin.policy.maxScoreG;
   const band = storyBandForScore(receipt.verifiedScoreG, max);
   const direction = sceneDirection("founder-runway", "result", { band });
-  return { balance: founder.capital.balanceG, balanceCaption: "Startup capital", key: `og:graduation:${receipt.runNumber}`, phase: "result", direction,
+  return { balance: founder.capital.balanceG, balanceCaption: "Startup capital", key: `og:graduation:${receipt.runNumber}`, phase: "result", delta: receipt.creditDeltaG, direction,
     speaker: "future-you", emotion: direction.emotion, effect: direction.effect, lines: graduationLines(founder, replay),
     overlay: graduationOverlay(receipt.verifiedScoreG, max), panel: graduationPanel(founder, { replay }),
     label: replay ? "Replay verified" : "Origin verified", ribbon: replay ? "ORIGIN · REPLAY VERIFIED" : "ORIGIN · VERIFIED",
@@ -706,11 +764,15 @@ function graduationShot() {
 async function commitOriginChoice(id) {
   try {
     founder = await founderCommand("origin_choose", { caseId: originCaseId, choiceId: id });
-    const finished = founder.quest.completed.some((c) => c.caseId === originCaseId);
+    const finished = founder.quest.completed.find((c) => c.caseId === originCaseId);
     if (finished) {
       originStage = "result"; countPending = true;
-      sensory.onConfirmedOutcome(1, `origin:${founder?.origin?.openRun?.runNumber ?? 0}:${originCaseId}`);
-    } else { originStage = "beat"; sensory.playEffect("confirm"); }
+      sensory.onConfirmedOutcome(finished.outcomeSign ?? 0, `origin:${founder.quest.runNumber}:${originCaseId}`);
+    } else {
+      originStage = "beat";
+      sensory.setDecisionProgress(founder?.quest?.draft?.round ?? 0, 4, `og:${originCaseId}`);
+      sensory.playEffect("confirm");
+    }
     render();
   } catch (error) { showToast(error.message); await resyncFounder(); }
   finally { moveBusy = false; }
@@ -764,7 +826,38 @@ function handleFounderAction(action, button) {
     founderStep(async () => { founder = await founderCommand("enter_hub"); view = "founder"; haptic("medium"); render(); window.scrollTo({ top: 0 }); });
   } else if (action === "og-hub") {
     view = "founder"; render(); window.scrollTo({ top: 0 });
+  } else if (action === "fh-reinvest") {
+    founderStep(async () => {
+      founder = await founderCommand("reinvest", { choiceId: button.dataset.choice, policyVersion: Number(button.dataset.version) });
+      render();
+      root.querySelector("#cycle-receipt")?.focus();
+      announcer.textContent = "Your capacity expansion is saved.";
+    });
+  } else if (action === "fh-operate") {
+    founderStep(async () => {
+      founder = await founderCommand("operate", { choiceId: button.dataset.choice, cycleNumber: Number(button.dataset.cycle), policyVersion: Number(button.dataset.version) });
+      render();
+      const receipt = founder.hub.operations.history[0];
+      sensory.onConfirmedOutcome(receipt.netG, receipt.transactionId);
+      sensory.onResultReveal(receipt.netG, receipt.transactionId);
+      root.querySelector("#cycle-receipt")?.focus();
+    });
+  } else if (action === "fh-open-business") {
+    const choice = root.querySelector('input[name="supplier-choice"]:checked');
+    if (!choice) { root.querySelector('input[name="supplier-choice"]')?.reportValidity(); return; }
+    founderStep(async () => {
+      founder = await founderCommand("business_open", { businessTypeId: button.dataset.type, templateVersion: Number(button.dataset.version), choiceId: choice.value });
+      render();
+      root.querySelector("#fh-company-name")?.focus();
+      announcer.textContent = "Business opened. Your opening receipt is saved.";
+    });
   } else if (action === "fh-preview") {
+    const offer = root.querySelector("#fh-offer");
+    if (offer) {
+      offer.open = true;
+      offer.querySelector("summary")?.focus();
+      return;
+    }
     document.getElementById("fh-previews")?.scrollIntoView({ behavior: storyMotionEnabled() ? "smooth" : "auto", block: "start" });
   }
 }
@@ -774,6 +867,55 @@ root.addEventListener("click", async (event) => {
   if (!button || button.disabled) return;
   const { action } = button.dataset;
   if (action === "auth-retry") { if(remoteRequested)authenticatePlayer(); return; }
+  if (action === "settings-logout") {
+    if (!remoteRequested || remoteStatus !== "ready") return;
+    const dialog = root.querySelector("#game-logout-dialog");
+    if (dialog?.showModal) {
+      // Escape and Cancel must return keyboard focus to the control that opened the dialog.
+      dialog.addEventListener("close", () => {
+        if (button.isConnected) button.focus({ preventScroll: true });
+      }, { once: true });
+      // Touch WebViews need an explicit focused opener for native dialog focus restoration.
+      button.focus({ preventScroll: true });
+      dialog.onkeydown = event => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        dialog.close();
+        button.focus({ preventScroll: true });
+      };
+      dialog.showModal();
+      dialog.querySelector('[data-action="settings-logout-cancel"]')?.focus({ preventScroll: true });
+    } else {
+      dialog?.setAttribute("open", "");
+      dialog?.querySelector('[data-action="settings-logout-cancel"]')?.focus?.({ preventScroll: true });
+    }
+    return;
+  }
+  if (action === "settings-logout-cancel") {
+    const dialog = root.querySelector("#game-logout-dialog");
+    if (dialog?.close) dialog.close();
+    else dialog?.removeAttribute("open");
+    root.querySelector('[data-action="settings-logout"]')?.focus();
+    return;
+  }
+  if (action === "settings-logout-confirm") {
+    if (!remoteRequested || remoteStatus !== "ready" || logoutBusy) return;
+    if (moveBusy || founderBusy) { showToast("Finish the active game action before signing out."); return; }
+    logoutBusy = true; button.disabled = true;
+    try {
+      await logoutTelegramSession();
+      // Wipe authenticated snapshots from this page, but never delete server
+      // progress or the separately persisted local demo.
+      pendingCommand = null; pendingFounderCommand = null;
+      founder = null; founderEnabled = false;
+      game = createGame(); setManualSignout(true); remoteStatus = "signedOut"; view = "home"; caseId = null; originCaseId = null;
+      leaveStory(); sensory.pause(); render();
+    } catch (error) {
+      button.disabled = false;
+      showToast("Could not end the session. Please try again.");
+    } finally { logoutBusy = false; }
+    return;
+  }
   if (action === "story-hurry") { hurryStory(); return; }
   if (action === "story-skip") { skipStory(); return; }
   if (action === "story-exit") { if (view === "origin" || view === "graduation") openFounderHome(); else changeView("home"); return; }
@@ -830,10 +972,14 @@ root.addEventListener("click", async (event) => {
       if (stage === "result") {
         const run = game.played.find((item) => item.caseId === caseId);
         if (run) sensory.onConfirmedOutcome(run.delta, `v1:${caseId}`);
-      } else sensory.playEffect("confirm");
+      } else {
+        sensory.setDecisionProgress(game.draft?.path?.length ?? 0, entry.stages.length, caseId);
+        sensory.playEffect("confirm");
+      }
       haptic("medium");
+      if (stage === "result") showToast("Mission complete. Review your results.", { optional: true });
       render();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
     } catch (error) { showToast(error.message); }
     return;
   }
@@ -844,6 +990,31 @@ root.addEventListener("click", async (event) => {
     if (!resetArmed) { resetArmed = true; haptic(); render(); return; }
     game = createGame(); persist(); changeView("home"); showToast("Preview reset. You have 1,000 virtual coins again.");
   }
+});
+
+// Settings controls use delegated events so page rerenders never duplicate handlers.
+root.addEventListener("change", (event) => {
+  const target = event.target.closest?.("[data-settings-category]");
+  if (!target) return;
+  const { name } = target;
+  if (target.dataset.settingsCategory === "player") {
+    if (!["notifications", "hideHeaderBalance"].includes(name)) return;
+    Object.assign(playerSettings, savePlayerSettings({ ...playerSettings, [name]: target.checked }));
+    if (name === "hideHeaderBalance") {
+      render();
+      root.querySelector('[name="hideHeaderBalance"]')?.focus({ preventScroll: true });
+    }
+  } else if (target.dataset.settingsCategory === "sound") {
+    if (!["music", "effects", "haptics", "musicVolume", "effectsVolume"].includes(name)) return;
+    sensory.setSettings({ [name]: target.type === "checkbox" ? target.checked : Number(target.value) });
+  }
+});
+root.addEventListener("input", (event) => {
+  const target = event.target.closest?.('input[type="range"][data-settings-category="sound"]');
+  if (!target || !["musicVolume", "effectsVolume"].includes(target.name)) return;
+  sensory.setSettings({ [target.name]: Number(target.value) });
+  const display = root.querySelector('[data-settings-output="' + target.name + '"]');
+  if (display) display.textContent = Math.round(Number(target.value) * 100) + "%";
 });
 
 root.addEventListener("submit", async (event) => {
@@ -901,5 +1072,5 @@ root.addEventListener("error", (event) => {
 }, true);
 
 setupTelegram();
-if(remoteRequested)authenticatePlayer();
+if(remoteRequested && remoteStatus==='connecting')authenticatePlayer();
 else render();

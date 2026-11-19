@@ -1,57 +1,64 @@
-# Sprint 2 handoff — from v2.1-A Founder Entry to v2.1-B First Business
+# Build Your Empire — engineering and release handoff
 
-Sprint 1 leaves persistent founder identity, a verified capital account, an immutable credit ledger, reputation evidence, telemetry, a flagged Hub and inactive business templates. Nothing below has been started.
+**19 November 2026 · Integration of PRs #53 and #54 · Invited-player acceptance pending.** The branch includes a gated path from qualification through opening, operations and reinvestment. The registry contains no approved purchasable business. The READY test deployment therefore cannot demonstrate the whole path with a real founder. Replays remain available under an enabled Origin policy. Virtual G has no cash value.
 
-## A. Decisions and approvals needed before engineering starts
+## Release status against the roadmap
 
-| # | Needed from the founder | Why it blocks |
+| Release | Implemented and exercised | Remaining gate |
 | --- | --- | --- |
-| D1 | Approve, change or reject the Origin scoring numbers (500/quest, 2,500 cap) and decide **O1** (fixed vs per-run seed / regime pinning) | Live credit is impossible while the policy is `unapproved` |
-| D2 | Approve the first economically viable business and its numbers (setup cost, reserve, per-cycle costs, margin, capacity) | `economics` is all `null`; `classifyCapital` cannot say "insufficient" without a threshold |
-| D3 | Approve running migration 002 on an **isolated** Neon branch, then a separate approval for any connected branch | Not applied anywhere yet |
-| D4 | Confirm interpretations C11 (zero-delta event) and C12 (inactivity-only sessions); decide timing of the Active Founders directory (C9) | Event/UI contracts depend on them |
-| D5 | Naming review for founder capital vs. legacy coins (O2) | Two currencies called "G" |
+| A · Founder Entry | Authenticated server identity, persistent in-progress run, qualification, capital account, delta-only replay credits and recovery by replay. | Approve scoring, cap and seed regime. Confirm new and returning founders on the selected test bot and validate the legacy-to-Origin experience. |
+| B · First Business | One owned starter, setup debit, minimum reserve check, supplier confirmation, durable opening decision, ownership and onboarding goal. A lost acknowledgement recovers from server state. | Select the enterprise and approve its opening terms. Review its in-world presentation on Telegram. |
+| C · Business Operations | Confirm an inventory choice, serve simulated demand, pay costs and see an itemized profit or loss. The first supplier choice influences later sales. Cooldown and receipts survive reconnect. | Approve costs, demand, margins, cadence and solvency limits. The current loop settles on explicit commands. Offline reporting and the low-capital comeback path still need design and acceptance. |
+| D · Growth and Consequences | Earn persistent first-cycle XP, see recent history, and pay once for a capacity expansion. Recorded expansion affects subsequent sales. | Approve upgrade and XP terms, define reliability evidence and recovery rules, assess inflation and progression over repeated cycles. |
+| E · Player Refinement | Inherited settings, privacy, logout, synthesized strings and haptics. This branch fixes narrow layout and Escape focus, handles logout failure/retry and gates settlement cues on confirmed outcomes. | Consolidated device run, real audio/haptic perception, closed-alpha observations, first-cycle completion and solvency measurements. |
+| F · Integration and Readiness | Guarded migrations, reconciliation, populated local restore and a two-account read-only mock agreement checking ownership and funds. | Rehearse on an approved isolated Preview database, review the contract and acceptance evidence, then obtain founder sign-off. Deal Room remains planned. |
 
-## B. Operations (no code)
+## Code and contract decisions
 
-1. Run the `AGENTS.md` identity check on the intended Preview branch; apply 002 to an isolated branch; run the founder integration suite against a disposable database on the same engine version.
-2. Provision `GWAP_V2_ANALYTICS_KEY` (separate from every other secret) and, for an isolated Preview only, `GWAP_V2_FOUNDER_HUB=1`, `GWAP_V2_ORIGIN_POLICY`, `GWAP_V2_ALLOW_UNAPPROVED_POLICY=isolated-preview-only`.
-3. **Extend backup/restore verification to v2** (`scripts/verify-backup-source.mjs`, `scripts/verify-restored-backup.sql`, `scripts/db-check.mjs`): the dump already includes `public.v2_*`, but nothing proves them. Restore drill must end with `v2_origin_reconciliation_issues` empty.
-4. Add a retention job for `v2_telemetry_events` (DELETE is permitted) and decide a policy for `v2_command_receipts`.
+| Surface | Changed modules and behavior |
+| --- | --- |
+| Commands and snapshots | `server/v2/{http,founder-service,hub-view,config,business-templates,operations}.mjs`, `founder-client.mjs`. The client submits a choice, version, request identifier and expected cycle where applicable. The server resolves founder, policy, prices, XP and balance. Additive Hub fields support older clients. |
+| Persistence and observability | `server/sql/003_*`, `004_*`, `postgres-founder-store.mjs`, `telemetry-contract.mjs`. The existing founder transaction serializes financial commands. Immutable journals anchor ownership, supplier, debits, sales and expansion. First-open and first-loss events are deduplicated. |
+| Player experience | `app.mjs`, `founder-hub-view.mjs`, `styles.css` and the sensory/settings paths. Players can review costs, confirm a choice and recover a receipt. The hosted player journey requires Telegram. The isolated browser demo runs on loopback. |
+| Verification and recovery | Browser, unit and PostgreSQL suites in `tests/`, schema checks in `scripts/verify-founder-schema.sql`, archive checks in `scripts/audit-backup-copy.mjs`, database and backup workflows/scripts. Expected schema generation is checked against archive contents. |
 
-## C. Build 2.1-B work plan (in order)
+## Economy and integrity
 
-1. **Migration 003** (new file, additive): drop trigger `v2_businesses_insert_disabled`; extend `lifecycle_status` `CHECK`; add `UNIQUE` "one business per allowed action"; add a **capital debit** path (a `v2_capital_debit_ledger` with `transaction_id`, `founder_id`, `business_id`, `amount_g > 0`, `balance_after_g`, `idempotency_key`, append-only like the credit ledger) and extend `v2_origin_reconciliation_issues` so `balance = credits − debits`; extend telemetry `CHECK` with `first_company_opened` (and `business_type_previewed` if approved).
-2. **Store primitives** (add to both `postgres-founder-store.mjs` and `tests/support/memory-founder-store.mjs`): `createBusiness`, `debitCapital`, `getBusinesses`. Keep the rule that every call takes `founderId`.
-3. **Service**: new command `business_open` (`caseId`-style `businessTypeId` from the registry only), inside one transaction: lock → check template `status`/approved economics → check capital ≥ setup + reserve → debit → create business → emit `first_company_opened` → reputation event. Replace `openBusiness()` in `business-templates.mjs` (currently always throws) and flip the template's `status`/`purchasable` + fill approved `economics` for the first template only.
-4. **Goals**: `deriveGoals(..., receipts)` already accepts verified receipt kinds; supply `company_opened` from the business table. Nothing client-side changes goal state.
-5. **Capital status**: pass the approved threshold into `classifyCapital`; `entryCapitalThresholdG` currently reads illustrative values only when the preview flag is on.
-6. **Decision echo (first scripted supplier/financing choice)**: new append-only `v2_founder_decisions` (receipt id, choice id, policy version) so 2.1-D can call it back.
-7. **UI**: replace the Hub's "preview only" card for the approved template with an open flow in the existing cinematic style; keep the other two inactive.
-8. **Recovery activity** (bounded educational side activity) if approved: needs a budgeted G source and frequency limits before any code.
+- Origin grants max(0, eligible verified score − previous credited best). Equal and lower runs grant zero. Qualification credits, business ownership, prior expenses and XP survive replay.
+- Reconciled capital equals Origin credit minus opening debit plus operating revenue minus operating cost minus expansion debit. Opening requires setup cost plus reserve. Each cycle requires its entire cost in available capital before any revenue is recognized.
+- Units sold are bounded by stock, supplier-specific demand and installed capacity. The receipt records unit price, costs, revenue, before/after balances, time, cycle number and policy version. XP comes from receipts. A retry cannot repeat the first-cycle award.
+- Unique opening, cycle and upgrade keys complement the founder lock. Reusing a command identifier returns the committed response. A competing command with a new identifier cannot purchase the same asset twice. A final-step failure rolls back intervening financial writes. Balances and ownership are scoped to the authenticated founder.
+- Synthetic PostgreSQL fixtures produced +8 G, then −18 G, one 7 XP award and a 9 G expansion. These numbers establish arithmetic and persistence only. A profitable repeatable cycle can accumulate G over time; a poor inventory choice can strand a founder below the minimum operating cost. Quantify both outcomes before approving terms. Replay seed variance, stale runs, terminology, telemetry retention and receipt retention remain open.
 
-## D. Interfaces to build on (stable in Sprint 1)
+## QA and evidence
 
-| Interface | Location | Extension rule |
-| --- | --- | --- |
-| Store transaction contract (`store.transaction(telegramUserId, fn)`; `tx.*` primitives) | `founder-service.mjs`, both stores | Add methods; don't change existing signatures |
-| Hub snapshot `contract: 1` | `server/v2/hub-view.mjs` | Additive fields only; bump `V2_CONTRACTS.hubSnapshot` for breaking changes |
-| Goal ladder v1 | `server/v2/goals.mjs` | Add receipt kinds, not client inputs |
-| Template registry v1 | `server/v2/business-templates.mjs` | `economics` is authoritative; `illustrativeEconomics` is never used for money |
-| Reputation evidence | `server/v2/reputation-contract.mjs`, `v2_reputation_events` | Add event types + `reliability` dimension via migration + `PAYLOAD_KEYS`; corrections are new rows |
-| GwapScore-compatible attestation preview | same | Stays non-deliverable until privacy/security approval flips `EXTERNAL_LINKING_APPROVED` |
-| Founder visibility card | `server/v2/visibility-contract.mjs` | Needs storage (`v2_founder_visibility`), opt-in endpoint, moderation, rate limits |
-| Telemetry registry | `server/v2/telemetry-contract.mjs` + table `CHECK` | Edit both in one PR; reserved events become active only with their gameplay |
-| Behavioural suite | `tests/support/founder-suite.mjs` | Add scenarios once; they run on memory and Postgres |
+| Check | Evidence and limit |
+| --- | --- |
+| Static and unit | Baseline 199 unit tests passed. Implementation passed `npm run check` and 203/203 unit tests, including authentication/session, economic boundaries, policy gates and settings. |
+| PostgreSQL | Fresh disposable PostgreSQL 18.6 passed 1/1 legacy ledger and 28/28 founder integration tests. Includes 12 competing opens across connections, rollback after receipt failure, exact and stale cycle retries, insufficient funds, cooldown, profit/loss, replay and upgrade deduplication. CI uses PostgreSQL 17. |
+| Browser | 29 automated tests across Chromium and WebKit with mocked Telegram/API responses. Includes new/returning Origin players, reload, expired session, 320px business flow, reduced motion, logout/re-login, preference persistence and focus. Real WebView acceptance is pending. |
+| Restore | PostgreSQL 18.7 dump/restore tools recovered a populated synthetic public schema into a fresh local database. Source and restored COPY counts matched, including 2 founders, 4 Origin settlements, 1 business, 2 cycles and 1 upgrade. Founder reconciliation passed and all five legacy discrepancy counts were zero. |
+| Connected Neon Preview | Read-only inspection of branch `br-billowing-sea-bcx8nhn7` found PostgreSQL 18.7, 1 player, 2 quests, 3 ledger rows, 14 command receipts and no v2 schema marker. This branch was neither migrated nor used for synthetic tests. |
+| CI and Preview | Implementation commit `6cbd152d4b4d46ebdcc4d875c018ba50c275e93f` on the original implementation branch. Inspect the [baseline checks](https://github.com/gwapupward-hub/GWAPOHOLICS/actions/runs/44557677871), [PostgreSQL integration](https://github.com/gwapupward-hub/GWAPOHOLICS/actions/runs/44557677866), [mobile browser checks](https://github.com/gwapupward-hub/GWAPOHOLICS/actions/runs/44557678048) and its [READY Vercel Preview](https://gwapoholics-tests-98ksh4f4t-bigdaddygwaps-projects.vercel.app). Deployment status establishes build readiness. Bot routing and authenticated gameplay require the device pass. |
 
-## E. Risks to carry forward
+To reproduce, check out the implementation SHA, install the repository dependencies, run `npm run check` and `npm test`, then follow the pinned browser workflow and the PostgreSQL workflow. Its final step restores the populated fixture into a second database, compares archive counts and checks the reconciliation results. The workflow expects a fresh disposable database named `gwapoholics_ci` and runs the legacy and founder suites in sequence. Use separate databases for source and restore. Apply the repository restore verifier and compare archive counts, schema generation and reconciliation before accepting a restore.
 
-- Seed variance / payout intent (O1); per-run seed means replays can improve score by regime luck.
-- v1 + v2 both tell the player "G" (O2).
-- Command budget is 30/60 s and counts successes only; a full Origin run is 26 commands — fine for humans, but revisit with real telemetry.
-- Stale open runs never expire (O3).
-- The browser suite uses a mocked server; a real-Telegram WebView pass (iOS + Android) remains for the end-of-v2.1 gate by instruction.
+## Release gates, migration and rollback
 
-## F. Definition of done for Sprint 2 (proposal)
+1. PR #52 reached main; #54 was merged into settings and #53 into cinematic audio. The integration branch joins that history to main after #47 and #50. Preserve the merged XP, exchange and economy specifications. The starter operating XP fixture is separate from canonical account XP; reconcile approved award and unlock rules before enabling offers. The founder holds merge and release approval.
+2. **Next decision:** approve a single starter business and its versioned terms together (setup, reserve, stock, prices, supplier demand, cadence, first-cycle XP and upgrade). Set the Origin policy/seed before an authenticated economy trial. Existing illustrative values are proposals.
+3. For a separately authorized isolated Preview, verify branch identity and source backup first. Apply only missing migrations in order: 001, 002, 003, 004. Never replay 002 over 003/004. Verify the schema and reconciliation before enabling the appropriate schema readers. First business requires `GWAP_V2_FIRST_BUSINESS_SCHEMA=1`; operations additionally require `GWAP_V2_OPERATIONS_SCHEMA=1`. Commands require reviewed terms. Confirm Preview bot identity and routing independently of deployment readiness.
+4. On an empty authorized rehearsal database roll back 004 then 003 using the supplied down scripts with session setting `gwap.confirm_v2_rollback=yes`. Populated economic history blocks the relevant down migration. In a populated environment close offers, preserve schema readers and receipts, and rehearse recovery into a separate database. Never overwrite a player database to test recovery.
+5. Before wider testing, agree on retention and balance thresholds. Record first-cycle completion, abandonments, insolvency and comeback results against the approved policy. Complete the single device checklist below and review Preview legal disclosures with the owner before launch.
 
-Opening the first business debits capital exactly once under concurrency (same style of tests as settlement), emits `first_company_opened` once, completes the goal receipt, preserves every Sprint 1 test, adds migration 003 with rollback + disposable-DB validation, and leaves Deal Room / Exchange / rivals / neighborhoods untouched.
+## Consolidated end-of-v2.1 physical acceptance
+
+Run once on the selected release candidate in the private test bot. Record tester alias, platform, OS, Telegram version, deployment SHA/URL, policy version, time and outcome for each row. Mark deferred devices explicitly. Keep tokens, signed launch data and player identifiers out of evidence. The [earlier iPhone worksheet](IOS_QA_RUN_SHEET.md) records historical v1 evidence.
+
+- [ ] On iPhone and Android, launch from Telegram, verify the intended test bot, finish all five qualification quests, enter the hub and compare the displayed award with the server receipt. Close midway and resume. Test an expired session and a connection loss.
+- [ ] Check narrow/fullscreen layouts, device safe areas, orientation change, enlarged text and reduced motion. Read scenes with VoiceOver and TalkBack. Navigate settings and confirmations with a keyboard, close with Escape and verify focus returns to the triggering control.
+- [ ] Review setup and reserve, decline once, then confirm one starter and supplier. Interrupt the connection after submission, relaunch and verify one business, one debit and the same recorded decision.
+- [ ] Exercise a profit, loss, cooldown, rejected unaffordable choice and expansion under the recorded policy. Retry from a second session. Compare receipt totals, G and XP on both devices. Replay an equal/lower and an improved qualification; confirm only the improvement credits and the empire survives.
+- [ ] Hear the original strings change through decisions and the success cue after confirmed gains. Check loss and zero-credit feedback, interruptions and silent/haptic opt-outs. Reopen settings and verify saved preferences, mandatory status feedback and the in-game-only notification wording.
+- [ ] Cancel logout, exercise a failed logout then retry, relaunch in Telegram and verify identity, balance, ownership, XP and history. Confirm Preview privacy disclosures remain readable.
+- [ ] Record closed-alpha observations and reconcile the trial on the authorized database. Record any pending comeback, offline or reliability scenarios against the policy before accepting v2.1.
