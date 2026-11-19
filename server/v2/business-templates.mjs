@@ -4,9 +4,7 @@ import { deepFreeze, V2_CONTRACTS } from "./versions.mjs";
  * Starter business templates (contract v1) — INACTIVE and NON-PURCHASABLE.
  *
  * Sprint 1 only registers category references and lets the Founder Hub show a
- * preview. Nothing here can create, charge for or open a business: the
- * `openBusiness` seam always throws, no HTTP command exists for it, and the
- * database trigger on v2_businesses rejects inserts until a later migration.
+ * preview. Nothing here can create, charge for or open a business: an opening requires a separately approved template and migration 003.
  *
  * `economics` is the authoritative (approved) configuration and is entirely
  * null until the founder approves numbers. `illustrativeEconomics` holds the
@@ -89,9 +87,24 @@ export function classifyCapital(balanceG, thresholdG) {
   return "unclassified";
 }
 
-/** Future-business seam: deliberately unusable in Sprint 1. */
-export function openBusiness() {
-  const error = new Error("Opening a business is not available yet");
-  error.code = "BUSINESS_FEATURE_DISABLED";
-  throw error;
+/** Only reviewed registry terms may enter the opening service. Draft display prices never enter it. */
+export function approvedStarterOffer(templates = BUSINESS_TEMPLATES) {
+  const active = templates.filter(t => t.status === "active" && t.purchasable && t.economics.status === "approved");
+  if (active.length !== 1) return null;
+  const [t] = active;
+  const { setupCostG, minimumOperatingReserveG } = t.economics;
+  if (!BUSINESS_TYPE_IDS.includes(t.businessTypeId) || !Number.isSafeInteger(t.version) || t.version < 1 ||
+      !Number.isSafeInteger(setupCostG) || setupCostG <= 0 ||
+      !Number.isSafeInteger(minimumOperatingReserveG) || minimumOperatingReserveG < 0 ||
+      !Number.isSafeInteger(setupCostG + minimumOperatingReserveG)) return null;
+  return Object.freeze({ businessTypeId: t.businessTypeId, name: t.name, version: t.version, setupCostG, minimumOperatingReserveG });
 }
+
+// A supplier commitment is story evidence. Its versioned ID can be recalled without re-pricing an opening.
+export const SUPPLIER_DECISION = deepFreeze({
+  version: 1, prompt: "Your supplier asks how to schedule your first deliveries.",
+  options: [
+    { id: "scheduled", label: "Reserve a delivery slot", detail: "You get a predictable arrival time and commit to planning orders in advance." },
+    { id: "flexible", label: "Order when you need stock", detail: "You can change orders later, but the supplier cannot promise a delivery slot." }
+  ]
+});

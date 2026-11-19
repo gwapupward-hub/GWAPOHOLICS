@@ -4,7 +4,7 @@ import { computeCredit, scoreBand, scoreRun, questScoreBand } from "./origin-pol
 import { buildFounderSnapshot, buildNotEnrolledSnapshot } from "./hub-view.mjs";
 import { buildTelemetryEvent, utcDay } from "./telemetry-contract.mjs";
 import { buildReputationEvent } from "./reputation-contract.mjs";
-import { classifyCapital, entryCapitalThresholdG } from "./business-templates.mjs";
+import { classifyCapital, entryCapitalThresholdG, SUPPLIER_DECISION } from "./business-templates.mjs";
 import { GOAL_LADDER_VERSION, GOAL_DEFINITIONS } from "./goals.mjs";
 
 export { FounderError };
@@ -22,7 +22,7 @@ export { FounderError };
  */
 export const SESSION_GAP_MS = 30 * 60 * 1000;
 const PRESENCE_WRITE_INTERVAL_MS = 60 * 1000;
-export const COMMANDS = Object.freeze(["snapshot", "origin_start_run", "origin_start_quest", "origin_choose", "enter_hub"]);
+export const COMMANDS = Object.freeze(["snapshot", "origin_start_run", "origin_start_quest", "origin_choose", "enter_hub", "business_open"]);
 
 function requireIdentity(userId) {
   if (!/^[1-9][0-9]{0,18}$/.test(String(userId || ""))) throw new FounderError("identity_required", "Valid Telegram identity required", 401);
@@ -68,7 +68,8 @@ async function loadBundle(ctx) {
   const capital = await tx.getCapital(founder.founderId);
   const latest = await tx.getLatestRun(founder.founderId);
   const settlements = await tx.listSettlements(founder.founderId, 10);
-  return { founder, qualification, capital, latest, settlements };
+  const business = ctx.config.businessSchemaEnabled && founder.enteredV2At ? await tx.getBusiness(founder.founderId) : null;
+  return { founder, qualification, capital, latest, settlements, business };
 }
 
 function capitalStatusOf(config, balanceG) {
@@ -229,8 +230,22 @@ async function enterHubCommand(ctx) {
   });
 }
 
+async function openFirstBusiness(ctx, businessTypeId, templateVersion, choiceId) {
+  const offer = ctx.config.starterOffer;
+  if (!ctx.config.businessSchemaEnabled || !offer || offer.businessTypeId !== businessTypeId || offer.version !== templateVersion)
+    throw new FounderError("offer_unavailable", "The opening terms are unavailable. Refresh your business offer.", 409);
+  if (!SUPPLIER_DECISION.options.some(option => option.id === choiceId))
+    throw new FounderError("invalid_supplier_choice", "Choose a supplier schedule", 400);
+  const { founderId, enteredV2At } = ctx.founder;
+  if (!enteredV2At) throw new FounderError("hub_required", "Enter the Founder Hub first", 409);
+  if (await ctx.tx.getBusiness(founderId)) throw new FounderError("already_open", "Your first business is already open", 409);
+  const businessId = randomUUID();
+  await ctx.tx.openFirstBusiness({ founderId, businessId, offer, transactionId: randomUUID(), decision: { id: randomUUID(), version: SUPPLIER_DECISION.version, choiceId }, now: ctx.now });
+  await emit(ctx, "first_company_opened", { properties: {}, sourceId: businessId });
+}
+
 export async function executeFounderCommand({
-  store, config, telegramUserId, command, requestId, caseId, choiceId, now = Date.now(), newSeed = generateRunSeed
+  store, config, telegramUserId, command, requestId, caseId, choiceId, businessTypeId, templateVersion, now = Date.now(), newSeed = generateRunSeed
 } = {}) {
   if (!config?.founderHubEnabled) throw new FounderError("not_found", "Not found", 404);
   const uid = requireIdentity(telegramUserId);
@@ -243,7 +258,7 @@ export async function executeFounderCommand({
     if (!config.policy) throw new FounderError("origin_unavailable", "Origin qualification is not open", 409);
   }
   const hash = mutating
-    ? createHash("sha256").update(JSON.stringify({ command, caseId: caseId ?? null, choiceId: choiceId ?? null })).digest("hex")
+    ? createHash("sha256").update(JSON.stringify({ command, caseId: caseId ?? null, choiceId: choiceId ?? null, ...(command === "business_open" ? { businessTypeId, templateVersion } : {}) })).digest("hex")
     : null;
 
   return store.transaction(uid, async (tx) => {
@@ -264,6 +279,7 @@ export async function executeFounderCommand({
       if (!ctx.founder) throw new FounderError("not_enrolled", "Start your Origin first", 409);
       if (command === "origin_start_quest") await startQuestCommand(ctx, caseId);
       else if (command === "origin_choose") await chooseCommand(ctx, caseId, choiceId);
+      else if (command === "business_open") await openFirstBusiness(ctx, businessTypeId, templateVersion, choiceId);
       else await enterHubCommand(ctx);
     }
     const result = await snapshotOf(ctx, { impression: command === "enter_hub" });

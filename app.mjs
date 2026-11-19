@@ -20,6 +20,9 @@ import {
   playableCases, evidenceFor
 } from "./game-core.mjs";
 
+// Local layout and Telegram safe areas work before the optional web fonts arrive.
+const fontSheet = document.getElementById("game-fonts");
+if (fontSheet) fontSheet.media = "all";
 const root = document.querySelector("#app");
 // A single presentation-only controller handles every audio and haptic cue.
 const sensory = createSensoryLayer({ renderControls: false });
@@ -27,8 +30,8 @@ const playerSettings = loadPlayerSettings();
 const tg = window.Telegram?.WebApp;
 const isTelegram = Boolean(tg?.initData);
 const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname) || location.protocol === "file:";
-const explicitDemo = new URLSearchParams(location.search).get("demo") === "1";
-const canPlay = isTelegram || localPreview || explicitDemo;
+const explicitDemo = localPreview && new URLSearchParams(location.search).get("demo") === "1";
+const canPlay = isTelegram || localPreview;
 const remoteRequested = isTelegram && !explicitDemo;
 let remoteStatus = remoteRequested ? (isManuallySignedOut() ? "signedOut" : "connecting") : "demo";
 let remoteFailure = '';
@@ -192,7 +195,7 @@ function changeView(next) {
   stage = "brief";
   haptic();
   render();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
 }
 
 function openCase(id) {
@@ -209,7 +212,7 @@ function openCase(id) {
   selectedChoice = null;
   haptic();
   render();
-  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
 }
 
 function getCase() { return CASES.find((entry) => entry.id === caseId); }
@@ -571,7 +574,7 @@ async function commitChoice(id) {
       persist();
     }
     if (stage === "result") showToast("Mission complete. Review your results.", { optional: true });
-    render(); if (!story.active) window.scrollTo({ top: 0, behavior: "smooth" });
+    render(); if (!story.active) window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
   } catch (error) { showToast(error.message); if(game.remote)await resyncRemote(); }
   finally { moveBusy = false; }
 }
@@ -690,7 +693,7 @@ async function openFounderHome() {
   view = graduated && !founder.founder.enteredHub && !founder.origin.openRun ? "graduation" : "founder";
   originCaseId = null; caseId = null; selectedChoice = null; haptic();
   render();
-  if (view === "founder") window.scrollTo({ top: 0, behavior: "smooth" });
+  if (view === "founder") window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
 }
 
 function bindHubTypewriter() {
@@ -714,7 +717,7 @@ function originStoryShot(entry) {
     const direction = sceneDirection(entry.id, "result", { band: row.result.band });
     const scene = narrativeScene(entry.id, "result", { band: row.result.band });
     const nextEntry = founderQuests().find((item) => !q.completed.some((c) => c.caseId === item.id));
-    return { ...base, key: `og:${entry.id}:result`, phase: "result", delta: row.scoreG ?? 0, direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
+    return { ...base, key: `og:${entry.id}:result:${q.runNumber}`, phase: "result", delta: row.outcomeSign ?? 0, direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
       lines: [scene.line, `Lesson: ${entry.takeaway}`], overlay: originScoreOverlay(row),
       panel: originQuestResultPanel({ row, state: founder, nextEntry }),
       label: `${entry.title}: Origin result`, ribbon: ribbon(direction), progress: { label: "QUEST COMPLETE", total, done: total, current: -1 } };
@@ -751,7 +754,7 @@ function graduationShot() {
   const max = founder.origin.policy.maxScoreG;
   const band = storyBandForScore(receipt.verifiedScoreG, max);
   const direction = sceneDirection("founder-runway", "result", { band });
-  return { balance: founder.capital.balanceG, balanceCaption: "Startup capital", key: `og:graduation:${receipt.runNumber}`, phase: "result", delta: receipt.verifiedScoreG, direction,
+  return { balance: founder.capital.balanceG, balanceCaption: "Startup capital", key: `og:graduation:${receipt.runNumber}`, phase: "result", delta: receipt.creditDeltaG, direction,
     speaker: "future-you", emotion: direction.emotion, effect: direction.effect, lines: graduationLines(founder, replay),
     overlay: graduationOverlay(receipt.verifiedScoreG, max), panel: graduationPanel(founder, { replay }),
     label: replay ? "Replay verified" : "Origin verified", ribbon: replay ? "ORIGIN · REPLAY VERIFIED" : "ORIGIN · VERIFIED",
@@ -761,10 +764,10 @@ function graduationShot() {
 async function commitOriginChoice(id) {
   try {
     founder = await founderCommand("origin_choose", { caseId: originCaseId, choiceId: id });
-    const finished = founder.quest.completed.some((c) => c.caseId === originCaseId);
+    const finished = founder.quest.completed.find((c) => c.caseId === originCaseId);
     if (finished) {
       originStage = "result"; countPending = true;
-      sensory.onConfirmedOutcome(1, `origin:${founder?.origin?.openRun?.runNumber ?? 0}:${originCaseId}`);
+      sensory.onConfirmedOutcome(finished.outcomeSign ?? 0, `origin:${founder.quest.runNumber}:${originCaseId}`);
     } else {
       originStage = "beat";
       sensory.setDecisionProgress(founder?.quest?.draft?.round ?? 0, 4, `og:${originCaseId}`);
@@ -823,7 +826,22 @@ function handleFounderAction(action, button) {
     founderStep(async () => { founder = await founderCommand("enter_hub"); view = "founder"; haptic("medium"); render(); window.scrollTo({ top: 0 }); });
   } else if (action === "og-hub") {
     view = "founder"; render(); window.scrollTo({ top: 0 });
+  } else if (action === "fh-open-business") {
+    const choice = root.querySelector('input[name="supplier-choice"]:checked');
+    if (!choice) { root.querySelector('input[name="supplier-choice"]')?.reportValidity(); return; }
+    founderStep(async () => {
+      founder = await founderCommand("business_open", { businessTypeId: button.dataset.type, templateVersion: Number(button.dataset.version), choiceId: choice.value });
+      render();
+      root.querySelector("#fh-company-name")?.focus();
+      announcer.textContent = "Business opened. Your opening receipt is saved.";
+    });
   } else if (action === "fh-preview") {
+    const offer = root.querySelector("#fh-offer");
+    if (offer) {
+      offer.open = true;
+      offer.querySelector("summary")?.focus();
+      return;
+    }
     document.getElementById("fh-previews")?.scrollIntoView({ behavior: storyMotionEnabled() ? "smooth" : "auto", block: "start" });
   }
 }
@@ -937,7 +955,7 @@ root.addEventListener("click", async (event) => {
       haptic("medium");
       if (stage === "result") showToast("Mission complete. Review your results.", { optional: true });
       render();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: storyMotionEnabled() ? "smooth" : "auto" });
     } catch (error) { showToast(error.message); }
     return;
   }

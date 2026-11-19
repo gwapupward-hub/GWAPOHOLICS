@@ -15,6 +15,8 @@ import { getOriginPolicy, isPolicyApproved } from "./origin-policy.mjs";
  *                                               show unapproved illustrative business
  *                                               prices in previews (default: hidden)
  */
+import { approvedStarterOffer } from "./business-templates.mjs";
+
 const ACK = "isolated-preview-only";
 
 export function loadV2Config(env = process.env) {
@@ -37,6 +39,8 @@ export function loadV2Config(env = process.env) {
 
   return Object.freeze({
     founderHubEnabled,
+    businessSchemaEnabled: env.GWAP_V2_FIRST_BUSINESS_SCHEMA === "1",
+    starterOffer: env.GWAP_V2_FIRST_BUSINESS_SCHEMA === "1" && !production ? approvedStarterOffer() : null,
     policy,
     policyUnavailableReason,
     analyticsKey,

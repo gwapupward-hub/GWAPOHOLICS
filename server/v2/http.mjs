@@ -9,7 +9,7 @@ import { parseSessionCookie } from "../session.mjs";
 import { send, authorizedMutation, jsonBody, exactKeys } from "../http.mjs";
 import { executeFounderCommand, FounderError } from "./founder-service.mjs";
 
-const MUTATING = ["origin_start_run", "origin_start_quest", "origin_choose", "enter_hub"];
+const MUTATING = ["origin_start_run", "origin_start_quest", "origin_choose", "enter_hub", "business_open"];
 
 function fail(res, error) {
   if (error instanceof FounderError) {
@@ -38,7 +38,9 @@ export async function handleFounder(req, res, { config, sessionSecret, previousS
   if (req.method === "POST") {
     if (!authorizedMutation(req)) { send(res, 403, { error: "forbidden_origin" }); return; }
     try { input = await jsonBody(req, 2048); } catch { send(res, 400, { error: "invalid_request" }); return; }
-    if (!exactKeys(input, ["command", "requestId", "caseId", "choiceId"]) || !MUTATING.includes(input.command)) {
+    const opening = input?.command === "business_open";
+    const keys = opening ? ["command", "requestId", "businessTypeId", "templateVersion", "choiceId"] : ["command", "requestId", "caseId", "choiceId"];
+    if (!exactKeys(input, keys) || !MUTATING.includes(input.command)) {
       send(res, 400, { error: "invalid_command" }); return;
     }
   }

@@ -80,4 +80,5 @@ SELECT
                          AND l.event_type = 'quest_settlement')
   ) AS completed_quests_missing_settlement;
 
+\ir verify-founder-schema.sql
 COMMIT;

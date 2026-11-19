@@ -54,6 +54,7 @@ jobs:
           chmod 700 "$RUNNER_TEMP/gwap-backup"
           docker run --rm --network host \
             --env DATABASE_URL \
+            --mount "type=bind,src=$GITHUB_WORKSPACE/scripts,dst=/checks,readonly" \
             --mount "type=bind,src=$RUNNER_TEMP/gwap-backup,dst=/out" \
             postgres:18 \
             bash -euc '
@@ -69,6 +70,7 @@ jobs:
                 exit 1
               fi
               echo "Verified populated Preview game tables; source checks passed."
+              psql "$DATABASE_URL" -X -v ON_ERROR_STOP=1 -f /checks/verify-founder-schema.sql
               pg_dump --dbname="$DATABASE_URL" --schema=public --format=custom --no-owner --no-acl --file=/out/preview.dump
             '
           test -s "$RUNNER_TEMP/gwap-backup/preview.dump"

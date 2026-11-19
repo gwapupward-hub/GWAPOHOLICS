@@ -67,3 +67,10 @@
   .topbar.arcade-top .arcade-wordmark strong { font-size:20px; }
   .topbar.arcade-top .arcade-wordmark small { font-size:7px; letter-spacing:.08em; }
 }
+
+/* The fallback wordmark font can be wider than the downloaded condensed face. */
+.arcade-top { gap:8px; }
+.arcade-top .brand-lockup, .arcade-top .arcade-wordmark { min-width:0; }
+.arcade-top .arcade-wordmark strong { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.arcade-top .settings-top-controls, .arcade-top .arcade-mark { flex:none; }
+.fh-next small { overflow-wrap:anywhere; }

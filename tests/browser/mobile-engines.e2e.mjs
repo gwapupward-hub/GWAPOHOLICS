@@ -61,6 +61,7 @@ test('iPhone fullscreen Telegram sign-in screen clears native top controls',asyn
   await page.goto(url.href,{waitUntil:'domcontentloaded'});
   await page.locator('.arcade-title').waitFor();
   await page.waitForFunction(()=>document.querySelector('.arcade-hook')?.textContent?.includes('Telegram verification failed'));
+  await page.waitForFunction(()=>Array.from(document.styleSheets).some(sheet=>sheet.href?.endsWith('/telegram-fullscreen.css')));
   const box=await page.locator('.arcade-title').boundingBox();
   assert.ok(box && box.y>=125,'sign-in heading must be below fullscreen Telegram controls, got '+box?.y);
   assert.equal(await page.evaluate(()=>document.documentElement.classList.contains('telegram-fullscreen')),true);

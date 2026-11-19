@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 /**
  * Read-only verification of a provisioned GWAPOHOLICS Preview Postgres DB.
  * Does NOT create, alter or delete tables. Run only after provisioning.
@@ -27,6 +28,15 @@ else{
     if(!names.has('one_settlement_per_player_case')){
       console.error('Missing per-player, per-case settlement uniqueness index');process.exitCode=1;
     }else console.log('GWAPOHOLICS Preview database schema: present and settlement uniqueness index verified.');
+   }
+   if (process.env.GWAP_V2_FOUNDER_HUB === "1" || process.env.GWAP_V2_FIRST_BUSINESS_SCHEMA === "1") {
+    await c.query("BEGIN READ ONLY");
+    try {
+     await c.query("SET LOCAL gwap.require_founder_schema='yes'");
+     if (process.env.GWAP_V2_FIRST_BUSINESS_SCHEMA === "1") await c.query("SET LOCAL gwap.require_business_schema='yes'");
+     await c.query(await readFile(new URL("./verify-founder-schema.sql",import.meta.url),"utf8"));
+     console.log("Founder schema and ledger reconciliation verified.");
+    } finally { await c.query("ROLLBACK"); }
    }
   }finally{c.release()}
  }catch{

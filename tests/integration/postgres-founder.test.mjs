@@ -299,3 +299,74 @@ test("[postgres] migration 002 applies, is re-runnable, rolls back only v2 objec
     await admin.end();
   }
 });
+
+t("003 opening, supplier receipt, ownership, retries and gated rollback reconcile across sessions", async (env) => {
+  const up = await read("003_v2_first_business.sql");
+  const down = await read("003_v2_first_business.down.sql");
+  const client = await env.pool.connect();
+  try {
+    // Migrate an already-played 002 founder. All prices are synthetic test inputs.
+    const { h, snap } = await finishedRun(env);
+    await h.send("enter_hub");
+    await client.query(up);
+    await client.query(up);
+    await assert.rejects(client.query(down), /rollback refused/);
+    await client.query("ROLLBACK");
+    await client.query("SET gwap.confirm_v2_rollback = 'yes'");
+    await client.query(down);
+    const restored = await h.snapshot();
+    assert.equal(restored.capital.balanceG, snap.capital.balanceG);
+    await client.query(up);
+
+    const starterOffer = { businessTypeId: "barbershop", name: "Fixture shop", version: 1, setupCostG: 17, minimumOperatingReserveG: snap.capital.balanceG - 17 };
+    const openingConfig = { ...config, businessSchemaEnabled: true, starterOffer };
+    const account = (store, settings = openingConfig, telegramUserId = "4200000001") => harness({ store, config: settings, telegramUserId });
+    const a = account(env.store);
+    const args = { businessTypeId: starterOffer.businessTypeId, templateVersion: 1, choiceId: "scheduled" };
+    await assert.rejects(a.send("business_open", { ...args, templateVersion: 2 }), { code: "offer_unavailable" });
+    await assert.rejects(a.send("business_open", { ...args, choiceId: "unknown" }), { code: "invalid_supplier_choice" });
+    const expensive = account(env.store, { ...openingConfig, starterOffer: { ...starterOffer, minimumOperatingReserveG: starterOffer.minimumOperatingReserveG + 1 } });
+    await assert.rejects(expensive.send("business_open", args), { code: "insufficient_capital" });
+    assert.equal((await a.snapshot()).capital.balanceG, snap.capital.balanceG);
+
+    const checkSchema = await readFile(new URL("../../scripts/verify-founder-schema.sql", import.meta.url), "utf8");
+    await client.query(checkSchema);
+
+    // Failure at the final command-receipt step rolls back the earlier debit and all related rows.
+    const exhausted = createPostgresFounderStore(env.pool, { commandBudget: { limit: 0, windowSeconds: 60 } });
+    await assert.rejects(account(exhausted).send("business_open", args), { code: "rate_limited" });
+    assert.equal((await a.snapshot()).hub.business, null);
+    assert.equal((await a.snapshot()).capital.balanceG, snap.capital.balanceG);
+
+    const otherInstance = account(await env.reconnect());
+    const attempts = await Promise.allSettled(Array.from({ length: 12 }, (_, i) =>
+      (i % 2 ? a : otherInstance).send("business_open", { ...args, requestId: i < 8 ? "retry-open" : "distinct-" + i })));
+    const stored = await otherInstance.snapshot();
+    for (const result of attempts) {
+      if (result.status === "rejected") assert.equal(result.reason.code, "already_open");
+      else assert.deepEqual(result.value.hub.business, stored.hub.business);
+    }
+    assert.equal(stored.hub.business.decision.choiceId, "scheduled");
+    assert.equal(stored.capital.balanceG, starterOffer.minimumOperatingReserveG);
+    assert.equal(stored.hub.goals.find(g => g.id === "open_first_company").status, "completed");
+    assert.equal((await env.telemetry()).filter(e => e.eventName === "first_company_opened").length, 1);
+    for (const table of ["v2_businesses", "v2_founder_decisions", "v2_capital_debit_ledger"])
+      assert.equal((await client.query("SELECT count(*)::int AS n FROM "+table)).rows[0].n, 1);
+    await expectDbError(client.query("UPDATE v2_capital_debit_ledger SET amount_g = 1"), /append-only/);
+    await expectDbError(client.query("DELETE FROM v2_founder_decisions"), /append-only/);
+
+    await client.query(checkSchema);
+    // A mock counterparty can inspect only its own assets. The read-only seam moves no G.
+    const stranger = account(env.store, openingConfig, "4200000002");
+    await stranger.playRun(bestPath);
+    assert.equal((await stranger.send("enter_hub")).hub.business, null);
+    const replay = await a.playRun(bestPath);
+    assert.equal(replay.receipts[0].creditDeltaG, 0);
+    assert.equal(replay.capital.balanceG, stored.capital.balanceG);
+    assert.deepEqual(replay.hub.business, stored.hub.business);
+    await env.assertReconciled();
+    await assert.rejects(client.query(down), /rollback refused/);
+    await client.query("ROLLBACK");
+    assert.deepEqual((await otherInstance.snapshot()).hub.business, stored.hub.business);
+  } finally { client.release(); }
+});

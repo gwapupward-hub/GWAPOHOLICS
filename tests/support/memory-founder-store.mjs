@@ -8,7 +8,7 @@ function violation(name) { return Object.assign(new Error(`duplicate key value v
 export function createMemoryFounderStore({ commandBudget = { limit: 30, windowSeconds: 60 }, clock = () => Date.now() } = {}) {
   let db = {
     founders: new Map(), tgAccounts: new Map(), runs: new Map(), quests: [], qualification: new Map(), capital: new Map(),
-    ledger: [], settlements: [], reputation: [], telemetry: [], receipts: new Map(), legacyPlayers: new Set()
+    businesses: new Map(), ledger: [], settlements: [], reputation: [], telemetry: [], receipts: new Map(), legacyPlayers: new Set()
   };
   let queue = Promise.resolve();
   const copy = (v) => structuredClone(v);
@@ -41,6 +41,17 @@ export function createMemoryFounderStore({ commandBudget = { limit: 30, windowSe
           },
           async getQualification(founderId) { return copy(db.qualification.get(founderId)); },
           async getCapital(founderId) { return copy(db.capital.get(founderId)); },
+          async getBusiness(founderId) { return copy(db.businesses.get(founderId) ?? null); },
+          async openFirstBusiness({ founderId, businessId, offer, transactionId, decision, now }) {
+            if (db.businesses.has(founderId)) throw violation("v2_first_business_per_founder");
+            const capital = db.capital.get(founderId);
+            if (capital.balanceG < offer.setupCostG + offer.minimumOperatingReserveG)
+              throw new FounderError("insufficient_capital", "Capital below setup plus reserve", 409);
+            capital.balanceG -= offer.setupCostG;
+            db.businesses.set(founderId, { businessId, businessTypeId: offer.businessTypeId, version: offer.version,
+              status: "operating", transactionId, decision, setupCostG: offer.setupCostG, minimumOperatingReserveG: offer.minimumOperatingReserveG,
+              balanceAfterG: capital.balanceG, openedAt: now });
+          },
           async getOpenRun(founderId) {
             const run = [...db.runs.values()].find((r) => r.founderId === founderId && r.status === "in_progress");
             return run ? copy(run) : null;

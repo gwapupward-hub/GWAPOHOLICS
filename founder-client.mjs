@@ -33,17 +33,19 @@ export async function fetchFounder({ fetcher = fetch } = {}) {
   } catch { return null; }
 }
 
-export async function sendFounderCommand({ command, requestId, caseId, choiceId }, { fetcher = fetch } = {}) {
-  if (!["origin_start_run", "origin_start_quest", "origin_choose", "enter_hub"].includes(command)) throw new Error("Unknown founder command");
+export async function sendFounderCommand({ command, requestId, caseId, choiceId, businessTypeId, templateVersion }, { fetcher = fetch } = {}) {
+  if (!["origin_start_run", "origin_start_quest", "origin_choose", "enter_hub", "business_open"].includes(command)) throw new Error("Unknown founder command");
   if (typeof requestId !== "string" || !requestId) throw new Error("Missing unique request ID");
   const body = { command, requestId };
   if (caseId !== undefined) body.caseId = caseId;
   if (choiceId !== undefined) body.choiceId = choiceId;
+  if (command === "business_open") Object.assign(body, { businessTypeId, templateVersion });
   const r = await fetcher("/api/v2/founder", { method: "POST", credentials: "same-origin", cache: "no-store", headers: headers(), body: JSON.stringify(body) });
   if (!r?.ok) {
     let code = "";
     try { code = (await r.json())?.error || ""; } catch { /* non-JSON error */ }
-    const error = new Error(MESSAGES[r?.status] || "Founder service unavailable. Your confirmed progress is saved.");
+    const openingErrors = { insufficient_capital: "Your capital must cover the setup cost and operating reserve.", already_open: "Your first business is already open.", offer_unavailable: "These opening terms are unavailable. Review the latest offer." };
+    const error = new Error(openingErrors[code] || MESSAGES[r?.status] || "Founder service unavailable. Your confirmed progress is saved.");
     error.status = r?.status; error.code = code;
     throw error;
   }

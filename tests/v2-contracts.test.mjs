@@ -6,7 +6,7 @@ import {
 } from "../server/v2/telemetry-contract.mjs";
 import { GOAL_DEFINITIONS, deriveGoals } from "../server/v2/goals.mjs";
 import {
-  BUSINESS_TEMPLATES, classifyCapital, entryCapitalThresholdG, openBusiness, previewBusinessTemplates
+  BUSINESS_TEMPLATES, classifyCapital, entryCapitalThresholdG, approvedStarterOffer, previewBusinessTemplates
 } from "../server/v2/business-templates.mjs";
 import {
   EXTERNAL_LINKING_APPROVED, buildAttestationPreview, buildReputationEvent, canonicalJson, evidenceDigest
@@ -17,12 +17,12 @@ const SECRET = "s".repeat(40);
 const FOUNDER = "11111111-1111-4111-8111-111111111111";
 const UUID = "22222222-2222-4222-8222-222222222222";
 
-test("seven events are active, first_company_opened and first_operating_loss are defined but reserved", () => {
+test("business opening has a verified event and operating losses remain reserved", () => {
   assert.deepEqual(ACTIVE_EVENT_NAMES, [
     "session_started", "founder_first_login", "origin_quest_completed", "origin_run_finalized",
-    "origin_capital_credit_committed", "founder_entered_v2", "founder_goal_viewed"
+    "origin_capital_credit_committed", "founder_entered_v2", "founder_goal_viewed", "first_company_opened"
   ]);
-  assert.deepEqual(RESERVED_EVENT_NAMES, ["first_company_opened", "first_operating_loss"]);
+  assert.deepEqual(RESERVED_EVENT_NAMES, ["first_operating_loss"]);
   for (const name of RESERVED_EVENT_NAMES) {
     assert.throws(() => validateEventProperties(name, {}), /reserved and cannot be emitted yet/);
     assert.throws(() => buildTelemetryEvent({
@@ -139,7 +139,7 @@ test("business templates: three inactive non-purchasable categories, economics u
 });
 
 test("opening a business is impossible in Sprint 1", () => {
-  assert.throws(() => openBusiness("barbershop"), (error) => error.code === "BUSINESS_FEATURE_DISABLED");
+  assert.equal(approvedStarterOffer(), null, "draft prices cannot create a spendable opening offer");
 });
 
 test("capital classification: zero / insufficient / unclassified, never 'sufficient' on unapproved prices", () => {

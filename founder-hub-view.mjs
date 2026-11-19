@@ -192,7 +192,10 @@ export function founderHubPage(state, { name = "Founder" } = {}) {
   const o = state.origin, cap = state.capital, hub = state.hub, copy = CAPITAL_COPY[cap.status] || CAPITAL_COPY.unclassified;
   const heroBase = sceneDirection("founder-runway", "intro").base;
   const faceBase = CHARACTER_ART["future-you"].image;
-  const line = heroLine(state);
+  const business = hub.business;
+  const offer = hub.openingOffer;
+  const businessName = hub.businessPreviews.find(t => t.businessTypeId === business?.businessTypeId)?.name;
+  const line = business ? "The doors are open. Your first company and its opening receipt are on file." : heroLine(state);
   const next = state.nextStep;
   return `<div class="fh-page page-enter"><h1 class="sr-only">Founder Hub</h1>
     <section class="fh-hero" aria-label="Founder Hub">
@@ -210,14 +213,27 @@ export function founderHubPage(state, { name = "Founder" } = {}) {
       <div><span>VERIFIED ORIGIN SCORE (BEST)</span><strong>${fmt(o.personalBestScoreG)}<small> / ${fmt(o.policy?.maxScoreG ?? 0)}</small></strong></div>
       <div><span>STARTUP CAPITAL</span><strong>◉ ${fmt(cap.balanceG)}<small> G</small></strong></div>
     </section>
-    <p class="fh-capital ${copy.tone}"><em class="fh-chip">${copy.chip}</em> ${esc(copy.text)}</p>
+    ${business ? "" : `<p class="fh-capital ${copy.tone}"><em class="fh-chip">${copy.chip}</em> ${esc(copy.text)}</p>`}
     <section class="fh-next" aria-label="Your next step"><small>NEXT STEP</small><h2>${esc(next.title)}</h2><p>${esc(next.body)}</p>
       ${next.action ? `<button class="arcade-button${next.id === "replay_origin" ? "" : " is-orange"}" data-action="${next.action.kind === "preview_businesses" ? "fh-preview" : next.action.kind === "enter_hub" ? "fh-enter-hub" : next.action.kind === "open_origin" ? "fh-open-run" : "fh-replay"}">${esc(next.action.label)} <b>→</b></button>` : ""}
       ${next.milestone ? `<small class="fh-milestone">Next milestone: <b>${esc(hub.goals.find((g) => g.id === next.milestone.goalId)?.title ?? "")}</b> · ${esc(next.milestone.availableIn)}</small>` : ""}</section>
     <div class="arcade-section-title"><strong>YOUR GOALS</strong><small>${hub.goals.filter((g) => g.status === "completed").length} / ${hub.goals.length} DONE</small></div>
     <ol class="fh-goals">${hub.goals.map(goalCard).join("")}</ol>
+    ${business ? `<section class="fh-next" aria-label="Your business"><small>OPERATING</small>
+      <h2 tabindex="-1" id="fh-company-name">${esc(businessName ?? business.businessTypeId)}</h2>
+      <p>Opening cost: ${fmt(business.setupCostG)} G · Capital after opening: ${fmt(business.balanceAfterG)} G.</p>
+      <p>Supplier commitment: ${business.decision.choiceId === "scheduled" ? "Reserved delivery slot" : "Flexible orders"}. Your choice is saved for your next supplier conversation.</p>
+      <small>Opening receipt ${esc(business.transactionId)}</small></section>` : ""}
+    ${offer ? `<details class="fh-receipts" id="fh-offer"><summary>Review ${esc(offer.name)} opening terms</summary>
+      <p>Pay ${fmt(offer.setupCostG)} G once. Keep at least ${fmt(offer.minimumOperatingReserveG)} G in operating reserve.</p>
+      <fieldset><legend>${esc(offer.supplierDecision.prompt)}</legend>
+        ${offer.supplierDecision.options.map(option => `<label class="quiz-option"><input type="radio" name="supplier-choice" value="${esc(option.id)}" required />
+          <span><strong>${esc(option.label)}</strong> · ${esc(option.detail)}</span></label>`).join("")}</fieldset>
+      <button type="button" class="cta primary" data-action="fh-open-business" data-type="${esc(offer.businessTypeId)}"
+        data-version="${offer.version}" ${offer.affordable ? "" : "disabled"}>Confirm opening · ${fmt(offer.setupCostG)} G</button>
+      ${offer.affordable ? "" : "<p>Replay Origin and improve your personal best to earn more capital.</p>"}</details>` : ""}
     <div class="arcade-section-title" id="fh-previews"><strong>STARTER BUSINESSES</strong><small>PREVIEW ONLY</small></div>
-    <ul class="fh-previews">${hub.businessPreviews.map(previewCard).join("")}</ul>
+    <ul class="fh-previews">${hub.businessPreviews.filter(t => t.businessTypeId !== offer?.businessTypeId && t.businessTypeId !== business?.businessTypeId).map(previewCard).join("")}</ul>
     <p class="fh-note">These businesses open in an upcoming build. Nothing here can be bought yet, and no capital is spent by looking.</p>
     <div class="arcade-section-title"><strong>REPLAY THE ORIGIN</strong><small>ALWAYS FREE</small></div>
     <section class="fh-replay"><p>${esc(o.replay.rule)} Your best: <b>${fmt(o.personalBestScoreG)}</b>. Lifetime credited: <b>${fmt(o.lifetimeCreditedG)} G</b>.</p>
