@@ -836,8 +836,17 @@ root.addEventListener("click", async (event) => {
   if (action === "settings-logout") {
     if (!remoteRequested || remoteStatus !== "ready") return;
     const dialog = root.querySelector("#game-logout-dialog");
-    if (dialog?.showModal) dialog.showModal();
-    else dialog?.setAttribute("open", "");
+    if (dialog?.showModal) {
+      // Escape and Cancel must return keyboard focus to the control that opened the dialog.
+      dialog.addEventListener("close", () => {
+        if (button.isConnected) button.focus({ preventScroll: true });
+      }, { once: true });
+      dialog.showModal();
+      dialog.querySelector('[data-action="settings-logout-cancel"]')?.focus({ preventScroll: true });
+    } else {
+      dialog?.setAttribute("open", "");
+      dialog?.querySelector('[data-action="settings-logout-cancel"]')?.focus?.({ preventScroll: true });
+    }
     return;
   }
   if (action === "settings-logout-cancel") {
