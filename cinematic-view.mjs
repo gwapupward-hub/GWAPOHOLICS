@@ -65,13 +65,14 @@ function particles(kind) {
   return `<div class="fx-particles fx-${esc(kind)}">${items}</div>`;
 }
 
-function hud({ progress, balance, motion }) {
+// `balanceLabel` lets Origin scenes show a running score ("PTS") instead of G; omitted = v1 behaviour.
+function hud({ progress, balance, motion, balanceLabel, balanceCaption }) {
   const total = progress.total || 0;
   const dots = total ? `<span class="hud-dots" aria-hidden="true">${Array.from({ length: total }, (_, i) => `<i class="${i < progress.done ? "done" : i === progress.current ? "now" : ""}"></i>`).join("")}</span>` : "";
   return `<header class="stage-hud">
     <button type="button" class="hud-btn hud-exit" data-action="story-exit" aria-label="Pause and return to the game home. Progress is kept."><span aria-hidden="true">❚❚</span></button>
     <div class="hud-progress"><span class="hud-label">${esc(progress.label)}</span>${dots}</div>
-    <div class="hud-balance" aria-label="Balance ${coins(balance)} virtual G coins"><b aria-hidden="true">◉</b> ${coins(balance)}<small>G</small></div>
+    <div class="hud-balance" aria-label="${balanceCaption ? esc(balanceCaption) + " " + coins(balance) : `Balance ${coins(balance)} virtual G coins`}"><b aria-hidden="true">◉</b> ${coins(balance)}<small>${esc(balanceLabel || "G")}</small></div>
     <button type="button" class="hud-btn hud-motion" data-action="toggle-story-motion" aria-pressed="${!motion}" aria-label="${motion ? "Turn story animation off" : "Turn story animation on"}"><span aria-hidden="true">${motion ? "✦" : "✧"}</span></button>
   </header>`;
 }
@@ -180,7 +181,7 @@ export function storyStage(shot) {
     ${d.caseId === "brand-backlash" ? brandProps(d.key) : d.caseId === "streaming-pivot" ? storyProps(d.key) : seasonProps(d.caseId,d.key)}
     <div class="stage-layer stage-shade" aria-hidden="true"></div>
     <div class="stage-ui">
-      ${hud({ progress: shot.progress, balance: shot.balance, motion })}
+      ${hud({ progress: shot.progress, balance: shot.balance, motion, balanceLabel: shot.balanceLabel, balanceCaption: shot.balanceCaption })}
       <div class="stage-top"><span class="stage-ribbon">${esc(shot.ribbon)}</span>${shot.overlay || ""}</div>
       <div class="stage-spacer" data-action="story-hurry"></div>
       <div class="stage-cast" data-action="story-hurry">${character(shot.speaker, shot.emotion)}${bubble(shot.speaker, shot.lines)}</div>

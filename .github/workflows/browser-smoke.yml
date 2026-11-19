@@ -8,7 +8,18 @@ permissions:
 jobs:
   mobile-engines:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 20
+    # Chromium, WebKit and every system library they need are BAKED INTO this image, so the job never runs
+    # `apt-get` or `playwright install --with-deps` (that step exceeded the old 15-minute job limit on a slow
+    # Ubuntu mirror before any test started). The image is pinned by digest for reproducibility.
+    # Its Playwright version MUST equal PLAYWRIGHT_VERSION below; scripts/verify-browser-environment.mjs enforces it.
+    # To upgrade: pick a new mcr.microsoft.com/playwright:vX.Y.Z-noble tag, copy its digest, and change both places.
+    container:
+      image: mcr.microsoft.com/playwright:v1.56.1-noble@sha256:f1e7e01021efd65dd1a2c56064be399f3e4de00fd021ac561325f2bfbb2b837a
+      options: --init --ipc=host
+    env:
+      PLAYWRIGHT_VERSION: 1.56.1
+      BROWSER_ENGINES: chromium,webkit
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
@@ -16,11 +27,14 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
-      - name: Install browser test driver (CI only)
-        run: npm install --no-save --no-audit --no-fund playwright@1.56.1
-      - name: Install Chromium and WebKit
-        run: npx playwright install --with-deps chromium webkit
+      - name: Install browser test driver (CI only, version pinned to the image)
+        timeout-minutes: 5
+        run: npm install --no-save --no-audit --no-fund playwright@${PLAYWRIGHT_VERSION}
+      - name: Verify browser environment (versions match, both engines launch)
+        timeout-minutes: 3
+        run: node scripts/verify-browser-environment.mjs
       - name: Start local game server
+        timeout-minutes: 2
         run: |
           npm run dev > /tmp/gwapoholics-dev.log 2>&1 &
           for i in $(seq 1 30); do
@@ -29,5 +43,6 @@ jobs:
           done
           cat /tmp/gwapoholics-dev.log
           exit 1
-      - name: Exercise full season and mobile browser engines
-        run: node --test tests/browser/*.e2e.mjs
+      - name: Exercise full season and mobile browser engines (Chromium and WebKit)
+        timeout-minutes: 12
+        run: node --test --test-reporter=spec tests/browser/*.e2e.mjs

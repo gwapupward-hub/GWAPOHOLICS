@@ -5,6 +5,11 @@ import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARAC
 import { createSceneDirector, SCENE_STEPS, EXIT_STEPS } from "./story-director.mjs";
 import { bindTypewriter, DEFAULT_TYPE_SPEED } from "./typewriter.mjs";
 import { CASES, DIMENSIONS, RECOVERY_QUESTIONS } from "./cases.mjs";
+import { fetchFounder, sendFounderCommand } from "./founder-client.mjs";
+import {
+  originGatePage, originRunPage, founderHubPage, originIntroPanel, originDecisionPanel, originConsequencePanel,
+  originScoreOverlay, originQuestResultPanel, graduationOverlay, graduationLines, graduationPanel, storyBandForScore
+} from "./founder-hub-view.mjs";
 import {
   STORAGE_KEY, MIN_PLAY_BALANCE, STARTING_COINS, RECOVERY_REWARD,
   createGame, startCase, chooseStep, completeChain, chainResult, stageView,
@@ -43,6 +48,15 @@ let toast = null;
 let resetArmed = false;
 let moveBusy = false;
 
+// v2.1-A Founder Entry. `founder` is always the server's latest snapshot; null/disabled leaves v1 untouched.
+let founder = null;
+let founderEnabled = false;
+let originCaseId = null;
+let originStage = "brief";
+let pendingFounderCommand = null;
+let founderBusy = false;
+let hubTyper = null;
+
 function persist() {
   if (game.remote) return;
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(game)); }
@@ -68,6 +82,7 @@ function setupTelegram() {
     syncViewport();
     tg.onEvent?.("viewportChanged", syncViewport);
     tg.BackButton?.onClick(() => {
+      if (view === "origin" || view === "graduation") { openFounderHome(); return; }
       if (view === "scenario" && stage === "decide" && !game.draft?.path.length) { stage = "brief"; selectedChoice = null; render(); return; }
       changeView("home");
     });
@@ -75,7 +90,7 @@ function setupTelegram() {
 }
 
 function backButton() {
-  try { if (view === "scenario" || view === "recovery") tg?.BackButton?.show(); else tg?.BackButton?.hide(); }
+  try { if (view === "scenario" || view === "recovery" || view === "origin" || view === "graduation") tg?.BackButton?.show(); else tg?.BackButton?.hide(); }
   catch { /* browser preview */ }
 }
 
@@ -140,11 +155,13 @@ async function authenticatePlayer(){
     remoteStatus='failed';
   }
   render();
+  if(remoteStatus==='ready')loadFounder();
 }
 
 function changeView(next) {
   view = next;
   caseId = null;
+  originCaseId = null;
   selectedChoice = null;
   resetArmed = false;
   stage = "brief";
@@ -180,9 +197,9 @@ function activeCase() {
 
 function dotLogo(){return '<img src="./brand.svg" class="arcade-mark" alt="" width="42" height="42">';}
 
-function topbar(){return `<header class="topbar arcade-top"><div class="brand-lockup">${dotLogo()}<div class="arcade-wordmark"><strong>GWAPOHOLICS</strong><small>THE BUSINESS GAME</small></div></div><div class="arcade-wallet"><b>◉</b> ${coins(game.balance)}<small>G</small></div></header>`;}
+function topbar(wallet={balance:game.balance}){return `<header class="topbar arcade-top"><div class="brand-lockup">${dotLogo()}<div class="arcade-wordmark"><strong>GWAPOHOLICS</strong><small>THE BUSINESS GAME</small></div></div><div class="arcade-wallet" ${wallet.caption?`aria-label="${esc(wallet.caption)} ${coins(wallet.balance)} G"`:""}><b>◉</b> ${coins(wallet.balance)}<small>G</small>${wallet.caption?`<i class="arcade-wallet-cap">${esc(wallet.caption)}</i>`:""}</div></header>`;}
 
-function bottomnav(){return `<nav class="bottomnav arcade-nav">${[["home","PLAY","◆"],["cases","MISSIONS","▦"],["profile","YOU","◉"]].map(([key,label,glyph])=>`<button class="tab ${view===key?"active":""}" data-action="nav" data-view="${key}"><span class="tab-icon">${glyph}</span><span>${label}</span></button>`).join("")}</nav>`;}
+function bottomnav(){return `<nav class="bottomnav arcade-nav${founderEnabled?" has-founder":""}">${[["home","PLAY","◆"],["cases","MISSIONS","▦"],...(founderEnabled?[["founder","FOUNDER","★"]]:[]),["profile","YOU","◉"]].map(([key,label,glyph])=>`<button class="tab ${view===key?"active":""}" data-action="nav" data-view="${key}"><span class="tab-icon">${glyph}</span><span>${label}</span></button>`).join("")}</nav>`;}
 
 function miniBalance() {
   return `<div class="mini-balance"><span class="coin-glyph">◉</span><span>${coins(game.balance)}</span><small>G</small></div>`;
@@ -195,7 +212,7 @@ return `<div class="arcade-home page-enter">
 <section class="arcade-hero"><div class="arcade-orbit">G</div><div class="arcade-star star-a">✦</div><div class="arcade-star star-b">✦</div>
 <div class="arcade-hero-inside"><span>THE WORLD IS YOUR BOARDROOM</span><h1>MAKE<br>THE <em>CALL.</em></h1><p>Big decisions. Bigger consequences.<br>Think fast. Build smart.</p>
 ${isLocked(game)?`<button class="arcade-button is-orange" data-action="nav" data-view="recovery">START YOUR COMEBACK <b>→</b></button>`:next?`<button class="arcade-button" data-action="open-case" data-case="${next.id}">${game.draft?.path.length?"CONTINUE MISSION":"PLAY NOW"} <b>→</b></button>`:`<button class="arcade-button" data-action="nav" data-view="profile">YOUR LEGACY <b>→</b></button>`}</div></section>
-${homeNarrator()}<div class="arcade-stats"><div><span>YOUR CAPITAL</span><strong>◉ ${coins(game.balance)}<small> G</small></strong></div><div><span>MISSIONS</span><strong>${done}<small> / 5</small></strong></div></div>
+${homeNarrator()}${founderEnabled?`<button class="fh-home-banner" data-action="nav" data-view="founder"><b>★</b><span><small>NEW · FOUNDER MODE</small><strong>START AT ZERO. BUILD FROM THERE.</strong></span><em>→</em></button>`:""}<div class="arcade-stats"><div><span>YOUR CAPITAL</span><strong>◉ ${coins(game.balance)}<small> G</small></strong></div><div><span>MISSIONS</span><strong>${done}<small> / 5</small></strong></div></div>
 <div class="arcade-how"><div>⚡</div><span><b>HOW TO PLAY</b><small>Read the problem → make a call → watch what happens. Four moves finish a mission.</small></span></div>
 <div class="arcade-section-title"><strong>UP NEXT</strong><small>${prog}% COMPLETE</small></div>
 ${next?`<button class="arcade-next" data-action="open-case" data-case="${next.id}"><b>${next.number}</b><span><small>${esc(next.category.toUpperCase())} · ${next.minutes} MIN</small><strong>${esc(next.title)}</strong><i>${esc(next.hook)}</i></span><em>↗</em></button>`:`<div class="arcade-next"><strong>Season 01 complete. Your choices shaped your legacy.</strong></div>`}
@@ -336,7 +353,11 @@ const story = {
 
 const director = createSceneDirector({ onStep: applyStoryStep });
 
+function originEntry() { return CASES.find((entry) => entry.id === originCaseId); }
+
 function storyEligible() {
+  if (view === "graduation") return Boolean(founder?.receipts?.length);
+  if (view === "origin") return Boolean(founder?.quest) && hasStoryMode(originCaseId) && Boolean(originEntry());
   return view === "scenario" && hasStoryMode(caseId) && Boolean(getCase());
 }
 
@@ -422,8 +443,8 @@ function leaveStory() {
 }
 
 function renderStory() {
-  const entry = getCase();
-  const shot = storyShot(entry);
+  const entry = view === "graduation" ? null : view === "origin" ? originEntry() : getCase();
+  const shot = view === "graduation" ? graduationShot() : view === "origin" ? originStoryShot(entry) : storyShot(entry);
   shot.previous = story.previous;
   director.dispose();
   story.typer?.dispose();
@@ -448,7 +469,7 @@ function renderStory() {
   const name = STORY_CHARACTERS[shot.speaker]?.name || "Narrator";
   announcer.textContent = `${shot.progress.label}. ${name}: ${shot.lines.filter(Boolean).join(" ")}`;
   director.play({ reducedMotion: !motion });
-  preloadAfter(shot, entry);
+  if (view === "scenario") preloadAfter(shot, entry);
   backButton();
 }
 
@@ -527,6 +548,7 @@ function chooseInStory(button) {
 }
 
 function render(options = {}) {
+  hubTyper?.dispose(); hubTyper = null;
   if(remoteRequested && remoteStatus!=='ready'){
     leaveStory();
     const msg=remoteStatus==='connecting'
@@ -544,6 +566,7 @@ function render(options = {}) {
   else if (view === "profile") content = profilePage();
   else if (view === "ledger") content = ledgerPage();
   else if (view === "recovery") content = recoveryPage();
+  else if (view === "founder" || view === "origin" || view === "graduation") content = founderPage();
   else if (view === "scenario") {
     const entry = getCase();
     const run = entry && game.played.find((item) => item.caseId === entry.id);
@@ -553,9 +576,187 @@ function render(options = {}) {
       : stage === "beat" && game.draft?.caseId === entry.id ? beatPage(entry)
       : caseBrief(entry);
   }
-  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar()}<div class="prototype-tag"><span>◉</span> ${game.remote ? "VERIFIED TELEGRAM PLAYER · VIRTUAL COINS" : "PLAYTEST · LOCAL-ONLY COINS"} · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
+  root.innerHTML = `<main class="app-shell ${cinematicMotionClass()}"><div class="app-inner">${topbar(view === "founder" && founder ? { balance: founder.capital.balanceG, caption: "STARTUP CAPITAL" } : undefined)}<div class="prototype-tag"><span>◉</span> ${game.remote ? "VERIFIED TELEGRAM PLAYER · VIRTUAL COINS" : "PLAYTEST · LOCAL-ONLY COINS"} · NO CASH VALUE</div><div class="page-content${options.quiet ? " quiet" : ""}">${content}</div>${view==="scenario" || view==="recovery" ? "" : bottomnav()}</div></main>`;
   backButton();
+  if (view === "founder") bindHubTypewriter();
   if (countPending) { countPending = false; countUp(); }
+}
+
+/* ------------------------------------------------------------------------- *
+ * v2.1-A Founder Entry (feature-flagged on the server; invisible when off).
+ * All numbers shown here come from the server snapshot. The client only sends
+ * {command, requestId, caseId, choiceId}.
+ * ------------------------------------------------------------------------- */
+
+async function founderCommand(command, extra = {}) {
+  const signature = JSON.stringify({ command, ...extra });
+  const requestId = pendingFounderCommand?.signature === signature ? pendingFounderCommand.requestId : crypto.randomUUID();
+  pendingFounderCommand = { signature, requestId };
+  const next = await sendFounderCommand({ command, ...extra, requestId });
+  pendingFounderCommand = null;
+  return next;
+}
+
+async function loadFounder() {
+  const snapshot = await fetchFounder();
+  founderEnabled = Boolean(snapshot);
+  if (!snapshot) { founder = null; return; }
+  founder = snapshot;
+  if (!story.active && ["home", "cases", "profile", "ledger"].includes(view)) render({ quiet: true });
+}
+
+async function resyncFounder() {
+  const fresh = await fetchFounder();
+  if (fresh) { founder = fresh; render({ quiet: true }); }
+}
+
+function founderQuests() { return (founder?.quest?.questIds ?? CASES.map((c) => c.id)).map((id) => CASES.find((c) => c.id === id)).filter(Boolean); }
+
+function founderPage() {
+  if (!founder) return `<div class="fh-page page-enter"><p class="fh-note">Loading your founder file…</p></div>`;
+  if (!founder.enrolled) return originGatePage(founder);
+  if (founder.quest?.status === "in_progress") return originRunPage(founder, founderQuests());
+  if (founder.founder.enteredHub && founder.hub) return founderHubPage(founder, { name: bestName });
+  return originGatePage(founder);
+}
+
+async function openFounderHome() {
+  const fresh = await fetchFounder();
+  if (fresh) founder = fresh;
+  if (!founder) { changeView("home"); return; }
+  const graduated = founder.origin?.graduation?.status === "graduated";
+  view = graduated && !founder.founder.enteredHub && !founder.origin.openRun ? "graduation" : "founder";
+  originCaseId = null; caseId = null; selectedChoice = null; haptic();
+  render();
+  if (view === "founder") window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function bindHubTypewriter() {
+  const bubble = root.querySelector(".fh-bubble");
+  if (!bubble) return;
+  const speed = Number(new URLSearchParams(location.search).get("typespeed")) || DEFAULT_TYPE_SPEED;
+  hubTyper = bindTypewriter(bubble, { speed, instant: !storyMotionEnabled() });
+  hubTyper.start();
+}
+
+function originStoryShot(entry) {
+  const q = founder.quest;
+  const total = entry.stages.length;
+  const index = q.questIds.indexOf(entry.id) + 1;
+  const row = q.completed.find((item) => item.caseId === entry.id);
+  const draftOpen = q.status === "in_progress" && q.draft?.caseId === entry.id;
+  const base = { balance: q.provisionalScoreG, balanceLabel: "PTS", balanceCaption: "Origin points so far" };
+  const ribbon = (direction) => `ORIGIN ${index}/${q.questIds.length} · ${direction.title.toUpperCase()}`;
+
+  if (originStage === "result" && row) {
+    const direction = sceneDirection(entry.id, "result", { band: row.result.band });
+    const scene = narrativeScene(entry.id, "result", { band: row.result.band });
+    const nextEntry = founderQuests().find((item) => !q.completed.some((c) => c.caseId === item.id));
+    return { ...base, key: `og:${entry.id}:result`, phase: "result", direction, speaker: "future-you", emotion: direction.emotion, effect: direction.effect,
+      lines: [scene.line, `Lesson: ${entry.takeaway}`], overlay: originScoreOverlay(row),
+      panel: originQuestResultPanel({ row, state: founder, nextEntry }),
+      label: `${entry.title}: Origin result`, ribbon: ribbon(direction), progress: { label: "QUEST COMPLETE", total, done: total, current: -1 } };
+  }
+  if (originStage === "beat" && draftOpen && q.draft.round) {
+    const made = q.draft.round;
+    const step = q.draft.step;
+    const direction = sceneDirection(entry.id, "consequence", { round: made - 1 });
+    const emotion = reactionFor(entry.id, step.opening);
+    const effect = emotion === "worried" ? "impact" : emotion === "celebrating" ? "glow" : emotion === "talking" ? "none" : "dim";
+    return { ...base, key: `og:${entry.id}:beat:${made}`, phase: "consequence", direction, speaker: "gwap-o", emotion, effect,
+      lines: [step.opening || "Your move just changed the game."], panel: originConsequencePanel(made, total),
+      label: `${entry.title}: consequence of move ${made}`, ribbon: `ORIGIN ${index}/${q.questIds.length} · THE FALLOUT`, progress: { label: `MOVE ${made} LOCKED`, total, done: made, current: -1 } };
+  }
+  if (originStage === "decide" && draftOpen && q.draft.step) {
+    const step = q.draft.step;
+    const direction = sceneDirection(entry.id, "decision", { round: step.index });
+    const scene = narrativeScene(entry.id, "decision", { round: step.index });
+    return { ...base, key: `og:${entry.id}:decide:${step.index}`, phase: "decision", direction, speaker: scene.speaker, emotion: direction.emotion, effect: "none",
+      lines: [scene.line, step.setup], panel: originDecisionPanel(step),
+      label: `${entry.title}: round ${step.index + 1} of ${total}`, ribbon: ribbon(direction), progress: { label: `ROUND ${step.index + 1} OF ${total}`, total, done: step.index, current: step.index } };
+  }
+  const direction = sceneDirection(entry.id, "intro");
+  const scene = narrativeScene(entry.id, "intro");
+  return { ...base, key: `og:${entry.id}:intro`, phase: "intro", direction, speaker: scene.speaker, emotion: direction.emotion, effect: "none",
+    lines: [scene.line, entry.story],
+    panel: originIntroPanel(entry, founder.quest.evidence?.[entry.id] ?? [], { index, total: q.questIds.length, maxScoreG: founder.origin.policy.perQuestMaxG }),
+    label: `${entry.title}: Origin brief`, ribbon: ribbon(direction), progress: { label: `ORIGIN QUEST ${index} · BRIEFING`, total, done: 0, current: -1 } };
+}
+
+function graduationShot() {
+  const replay = founder.founder.enteredHub;
+  const receipt = founder.receipts[0];
+  const max = founder.origin.policy.maxScoreG;
+  const band = storyBandForScore(receipt.verifiedScoreG, max);
+  const direction = sceneDirection("founder-runway", "result", { band });
+  return { balance: founder.capital.balanceG, balanceCaption: "Startup capital", key: `og:graduation:${receipt.runNumber}`, phase: "result", direction,
+    speaker: "future-you", emotion: direction.emotion, effect: direction.effect, lines: graduationLines(founder, replay),
+    overlay: graduationOverlay(receipt.verifiedScoreG, max), panel: graduationPanel(founder, { replay }),
+    label: replay ? "Replay verified" : "Origin verified", ribbon: replay ? "ORIGIN · REPLAY VERIFIED" : "ORIGIN · VERIFIED",
+    progress: { label: "ORIGIN COMPLETE", total: founder.quest.questIds.length, done: founder.quest.questIds.length, current: -1 } };
+}
+
+async function commitOriginChoice(id) {
+  try {
+    founder = await founderCommand("origin_choose", { caseId: originCaseId, choiceId: id });
+    const finished = founder.quest.completed.some((c) => c.caseId === originCaseId);
+    if (finished) { originStage = "result"; countPending = true; try { tg?.HapticFeedback?.notificationOccurred("success"); } catch { /* optional */ } }
+    else originStage = "beat";
+    render();
+  } catch (error) { showToast(error.message); await resyncFounder(); }
+  finally { moveBusy = false; }
+}
+
+function chooseInOrigin(button) {
+  if (moveBusy || !originCaseId || !founder?.quest?.draft) return;
+  const id = button.dataset.choice;
+  if (!director.select(() => commitOriginChoice(id))) return;
+  moveBusy = true;
+  button.classList.add("is-chosen");
+  button.setAttribute("aria-pressed", "true");
+  story.el?.classList.add("has-choice");
+  haptic("medium");
+}
+
+async function founderStep(work) {
+  if (founderBusy) return;
+  founderBusy = true;
+  try { await work(); }
+  catch (error) { showToast(error.message || "Founder service unavailable."); await resyncFounder(); }
+  finally { founderBusy = false; }
+}
+
+function handleFounderAction(action, button) {
+  if (!founder) return;
+  if (action === "fh-start-run" || action === "fh-replay") {
+    if (founder.origin.openRun) { view = "founder"; render(); window.scrollTo({ top: 0 }); return; }
+    founderStep(async () => { founder = await founderCommand("origin_start_run"); view = "founder"; haptic("medium"); render(); window.scrollTo({ top: 0 }); });
+  } else if (action === "fh-open-run") {
+    view = "founder"; render();
+  } else if (action === "fh-open-quest") {
+    const open = founder.quest?.draft;
+    originCaseId = open && open.path.length ? open.caseId : button.dataset.case;
+    if (originCaseId !== button.dataset.case) showToast("Finish your open quest first. Its score counts only when all four decisions are made.");
+    view = "origin"; originStage = founder.quest?.draft?.caseId === originCaseId && founder.quest.draft.step ? "decide" : "brief"; haptic(); render();
+  } else if (action === "fh-view-quest") {
+    originCaseId = button.dataset.case; view = "origin"; originStage = "result"; countPending = false; render();
+  } else if (action === "og-decide") {
+    founderStep(async () => { founder = await founderCommand("origin_start_quest", { caseId: originCaseId }); originStage = "decide"; haptic(); render(); });
+  } else if (action === "og-choose") {
+    chooseInOrigin(button);
+  } else if (action === "og-next") {
+    originStage = "decide"; haptic("light"); render();
+  } else if (action === "og-next-quest") {
+    originCaseId = button.dataset.case; originStage = "brief"; haptic(); render();
+  } else if (action === "og-graduate") {
+    view = "graduation"; originCaseId = null; countPending = true; render();
+  } else if (action === "fh-enter-hub") {
+    founderStep(async () => { founder = await founderCommand("enter_hub"); view = "founder"; haptic("medium"); render(); window.scrollTo({ top: 0 }); });
+  } else if (action === "og-hub") {
+    view = "founder"; render(); window.scrollTo({ top: 0 });
+  } else if (action === "fh-preview") {
+    document.getElementById("fh-previews")?.scrollIntoView({ behavior: storyMotionEnabled() ? "smooth" : "auto", block: "start" });
+  }
 }
 
 root.addEventListener("click", async (event) => {
@@ -565,7 +766,8 @@ root.addEventListener("click", async (event) => {
   if (action === "auth-retry") { if(remoteRequested)authenticatePlayer(); return; }
   if (action === "story-hurry") { hurryStory(); return; }
   if (action === "story-skip") { skipStory(); return; }
-  if (action === "story-exit") { changeView("home"); return; }
+  if (action === "story-exit") { if (view === "origin" || view === "graduation") openFounderHome(); else changeView("home"); return; }
+  if (action.startsWith("fh-") || action.startsWith("og-")) { handleFounderAction(action, button); return; }
   if (action === "toggle-story-motion") {
     const on = toggleCinematicMotion();
     haptic("light");
@@ -579,7 +781,7 @@ root.addEventListener("click", async (event) => {
     } else render();
     return;
   }
-  if (action === "nav") { changeView(button.dataset.view); return; }
+  if (action === "nav") { if (button.dataset.view === "founder") openFounderHome(); else changeView(button.dataset.view); return; }
   if (action === "open-case") { openCase(button.dataset.case); return; }
   if (action === "decide") {
     try { if(game.remote) game=await remoteCommand("start",{caseId}); else {game=startCase(game,caseId);persist();} stage = "decide"; selectedChoice = null; haptic(); render(); }
