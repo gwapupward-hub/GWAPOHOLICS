@@ -76,7 +76,7 @@ for (const engine of ENGINES) {
       assert.ok(named.tagline < 0.05, JSON.stringify(named));
       assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
       await page.locator('.splash-skip').waitFor({ state: 'visible', timeout: 4000 });
-      await page.locator('.splash-status').getByText(/READY TO BUILD/).waitFor({ timeout: 9000 });
+      await page.getByText(/READY TO BUILD · ENTERING EMPIRE/).waitFor({ timeout: 9000 });
       assert.equal(await page.locator('.splash-meter').getAttribute('aria-valuenow'), '100');
       await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 12000 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
