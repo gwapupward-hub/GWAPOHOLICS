@@ -4,20 +4,27 @@
  * The caller owns Telegram ready()/expand() and the authoritative auth request.
  */
 export const SPLASH_TIMING = Object.freeze({
-  // Intentional 2x cinematic tempo (~5.62s incl. fade). Keep the 9s
-  // connection-stall guard independent of presentation pacing.
-  brandMs: 920,
-  syncMs: 2340,
-  enterMs: 4280,
-  floorMs: 3800,
-  targetMs: 5100,
-  handoffMs: 520,
+  // Editorial storyboard (ms from mount). Each hero has its own reveal and
+  // short reading/settling window. The 9s network guard is independent.
+  toplineMs: 320,
+  brandMs: 1050,
+  sparkMs: 2230,
+  titleMs: 3000,
+  taglineMs: 4220,
+  deckMs: 5440,
+  bootMs: 6020,
+  syncMs: 6900,
+  enterMs: 7700,
+  floorMs: 6100,
+  targetMs: 8300,
+  handoffMs: 610,
+  skipMs: 3600,
   stallMs: 9000
 });
 
 export function splashExitDelay(elapsedMs, timing = SPLASH_TIMING) {
-  // Even a slow successful request gets one readable completion beat.
-  return Math.max(140, Math.max(timing.floorMs, timing.targetMs) - Math.max(0, elapsedMs));
+  // A late successful login still gets a readable completion beat, not a flash.
+  return Math.max(340, Math.max(timing.floorMs, timing.targetMs) - Math.max(0, elapsedMs));
 }
 
 export function createOpeningSplash({
@@ -41,6 +48,10 @@ export function createOpeningSplash({
   let resolved = false;
   let closed = false;
   let stallTimer = null;
+  let exitTimer = null;
+  let statusTimer = null;
+  let skipTimer = null;
+  let exiting = false;
 
   host.innerHTML = `<section class="splash-stage" aria-label="GWAPOHOLICS starting">
     <div class="splash-ambience" aria-hidden="true"></div>
@@ -66,8 +77,22 @@ export function createOpeningSplash({
       <button class="splash-retry" type="button" hidden>RETRY SECURE CONNECTION ↗</button>
       <p class="splash-footnote">EDUCATIONAL SIMULATION · VIRTUAL G ONLY</p>
     </div>
+    <button class="splash-skip" type="button" aria-label="Skip the opening animation and enter the game" hidden>SKIP INTRO <span aria-hidden="true">↗</span></button>
   </section>`;
 
+  const stage = host.querySelector('.splash-stage');
+  // Drive CSS and session-status cues from one storyboard to prevent drift.
+  for (const [name, ms] of [
+    ['topline', timing.toplineMs],
+    ['brand', timing.brandMs],
+    ['spark', timing.sparkMs],
+    ['title', timing.titleMs],
+    ['tagline', timing.taglineMs],
+    ['deck', timing.deckMs],
+    ['boot', timing.bootMs]
+  ]) stage.style.setProperty(`--splash-${name}-delay`, `${ms}ms`);
+
+  const skip = host.querySelector('.splash-skip');
   const bar = host.querySelector('.splash-meter');
   const fill = host.querySelector('.splash-meter-fill');
   const status = host.querySelector('.splash-status');
@@ -88,9 +113,43 @@ export function createOpeningSplash({
     fill.style.setProperty('--splash-progress', String(value));
     bar.setAttribute('aria-valuenow', String(Math.round(value * 100)));
   }
-  function cue(label, value) {
-    status.textContent = label;
+  function cue(label, value, immediate = false) {
     if (value !== undefined) progress(value);
+    cancel(statusTimer);
+    statusTimer = null;
+    if (!motionEnabled || immediate || status.textContent === label) {
+      status.classList.remove('splash-status-changing');
+      status.textContent = label;
+      return;
+    }
+    status.classList.add('splash-status-changing');
+    statusTimer = queue(() => {
+      statusTimer = null;
+      status.textContent = label;
+      status.classList.remove('splash-status-changing');
+    }, 280);
+  }
+  function revealSkip() {
+    if (closed || exiting || !resolved) return;
+    const remaining = Math.max(0, timing.skipMs - (clock() - begunAt));
+    cancel(skipTimer);
+    skipTimer = queue(() => {
+      if (!closed && resolved && !exiting) skip.hidden = false;
+    }, remaining);
+  }
+  function beginHandoff() {
+    if (closed || exiting || !resolved) return;
+    exiting = true;
+    cancel(exitTimer);
+    cancel(skipTimer);
+    skip.hidden = true;
+    host.classList.add('splash-exit');
+    queue(finish, motionEnabled ? timing.handoffMs : 0);
+  }
+  function skipIntro() {
+    // Visual shortcut only: never reveal the game before authoritative auth.
+    if (closed || !resolved) return;
+    beginHandoff();
   }
   function hideRetry() {
     host.classList.remove('splash-stalled');
@@ -102,7 +161,8 @@ export function createOpeningSplash({
     host.classList.add('splash-stalled');
     retry.hidden = false;
     retry.disabled = false;
-    cue(stalled ? 'STILL CONNECTING TO YOUR EMPIRE...' : 'SECURE SIGN-IN UNAVAILABLE.');
+    skip.hidden = true;
+    cue(stalled ? 'STILL CONNECTING TO YOUR EMPIRE...' : 'SECURE SIGN-IN UNAVAILABLE.', undefined, true);
     retry.focus({ preventScroll: true });
   }
   function finish() {
@@ -111,6 +171,7 @@ export function createOpeningSplash({
     for (const id of timers) win.clearTimeout(id);
     timers.clear();
     retry.removeEventListener('click', tryAgain);
+    skip.removeEventListener('click', skipIntro);
     host.replaceChildren();
     host.classList.remove('splash-active', 'splash-exit', 'splash-stalled', 'story-static');
     doc.documentElement.classList.remove('splash-open');
@@ -124,19 +185,20 @@ export function createOpeningSplash({
     cancel(stallTimer);
     hideRetry();
     const elapsed = clock() - begunAt;
-    // Before the scheduled stage cue, preserve progressive visual beats even
-    // if authentication resolved immediately. A slow login completes now.
-    if (elapsed >= timing.enterMs) cue('ENTERING STAGE...', 1);
-    queue(() => {
-      host.classList.add('splash-exit');
-      queue(finish, motionEnabled ? timing.handoffMs : 0);
-    }, splashExitDelay(elapsed, timing));
+    // Quick auth stays in the storyboard; slow auth resolves truthfully and
+    // gets a calm confirmation before handoff, without replaying intro beats.
+    if (elapsed >= timing.enterMs) cue('READY TO BUILD · ENTERING EMPIRE...', 1);
+    revealSkip();
+    exitTimer = queue(beginHandoff, splashExitDelay(elapsed, timing));
   }
   function track(work) {
     if (closed) return Promise.resolve(false);
     const token = ++attempt;
     resolved = false;
     cancel(stallTimer);
+    cancel(exitTimer);
+    cancel(skipTimer);
+    skip.hidden = true;
     hideRetry();
     if (token > 1) cue('RECONNECTING TO EMPIRE...', 0.55);
     stallTimer = queue(() => {
@@ -161,7 +223,7 @@ export function createOpeningSplash({
     if (closed) return;
     retry.disabled = true;
     hideRetry();
-    cue('RECONNECTING TO EMPIRE...', 0.45);
+    cue('RECONNECTING TO EMPIRE...', 0.45, true);
     try { onRetry(); }
     catch { failure(); }
   }
@@ -173,19 +235,20 @@ export function createOpeningSplash({
   if (!motionEnabled) host.classList.add('story-static');
   progress(0.08);
   retry.addEventListener('click', tryAgain);
+  skip.addEventListener('click', skipIntro);
   queue(() => {
     if (doc.visibilityState !== 'hidden') {
       try { onBrandImpact(); } catch { /* no Telegram haptics in ordinary browsers */ }
     }
-  }, timing.brandMs + 220);
+  }, timing.brandMs + 450);
   queue(() => {
     if (!host.classList.contains('splash-stalled')) {
-      cue(resolved ? 'PLAYER VERIFIED · PREPARING STAGE...' : 'SYNCING PLAYER & RUN...', 0.62);
+      cue(resolved ? 'PLAYER VERIFIED · PREPARING STAGE...' : 'SECURING PLAYER SESSION...', 0.62);
     }
   }, timing.syncMs);
   queue(() => {
     if (!host.classList.contains('splash-stalled')) {
-      cue(resolved ? 'ENTERING STAGE...' : 'VERIFYING EMPIRE SESSION...', resolved ? 1 : 0.84);
+      cue(resolved ? 'READY TO BUILD · ENTERING EMPIRE...' : 'VERIFYING EMPIRE SESSION...', resolved ? 1 : 0.84);
     }
   }, timing.enterMs);
 
