@@ -3,21 +3,35 @@
  * users, or treats a visual progress value as proof of a valid session.
  * The caller owns Telegram ready()/expand() and the authoritative auth request.
  */
+
+// The letters are fixed GWAP-owned strings, not user-supplied markup. The tiny
+// stagger is declarative CSS, never a per-frame JavaScript animation.
+function springLetters(word, accentAfter = Infinity) {
+  return Array.from(word, (letter, index) =>
+    `<span class="splash-letter${index >= accentAfter ? ' is-green' : ''}" aria-hidden="true" style="--letter-delay:${index * 48}ms">${letter}</span>`
+  ).join('');
+}
+
 export const SPLASH_TIMING = Object.freeze({
-  // Editorial storyboard (ms from mount). Each hero has its own reveal and
-  // short reading/settling window. The 9s network guard is independent.
+  // Three acts: GWAP origin → ASCENDANCY → isolated secure loading.
+  // The 9s auth stall guard remains independent of the cinematic runtime.
   toplineMs: 320,
   brandMs: 1050,
   sparkMs: 2230,
   titleMs: 3000,
   taglineMs: 4220,
   deckMs: 5440,
-  bootMs: 6020,
-  syncMs: 6900,
-  enterMs: 7700,
+  openingExitMs: 6280,
+  wealthMs: 7020,
+  wealthWordMs: 7470,
+  wealthSubMs: 8730,
+  wealthExitMs: 10820,
+  loadingMs: 11610,
+  syncMs: 12500,
+  enterMs: 14000,
   floorMs: 6100,
-  targetMs: 8300,
-  handoffMs: 610,
+  targetMs: 15400,
+  handoffMs: 750,
   skipMs: 3600,
   stallMs: 9000
 });
@@ -59,24 +73,48 @@ export function createOpeningSplash({
     <div class="splash-motes" aria-hidden="true">
       <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
     </div>
-    <div class="splash-center">
+    <div class="splash-center splash-scene-opening" aria-label="Your GWAPOHOLICS origin">
       <span class="splash-topline">✦ GRIND WITH A PURPOSE ✦</span>
       <div class="splash-emblem" aria-hidden="true">
         <div class="splash-badge"><img src="./brand.svg" alt="" width="96" height="96" decoding="async"></div>
         <span class="splash-spark splash-spark-orange">✦</span>
         <span class="splash-spark splash-spark-purple">✦</span>
       </div>
-      <h1 class="splash-title">GWAP<em>OHOLICS</em></h1>
-      <p class="splash-tagline">BUILD YOUR <strong>EMPIRE!</strong></p>
+      <h1 class="splash-title" aria-label="GWAPOHOLICS">${springLetters('GWAPOHOLICS', 4)}</h1>
+      <p class="splash-tagline" aria-label="Build your empire">
+        <span class="splash-word" aria-hidden="true" style="--word-delay:0ms">BUILD</span>
+        <span class="splash-word" aria-hidden="true" style="--word-delay:110ms">YOUR</span>
+        <strong class="splash-word" aria-hidden="true" style="--word-delay:220ms">EMPIRE!</strong>
+      </p>
       <span class="splash-deck">EVERY EMPIRE STARTS WITH A MOVE.</span>
     </div>
-    <div class="splash-boot">
-      <div class="splash-boot-head"><span>EMPIRE OS <b>◉</b></span><span>SEASON 01 / BOOTING</span></div>
-      <div class="splash-meter" role="progressbar" aria-label="Opening sequence" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8"><span class="splash-meter-fill"></span></div>
-      <p class="splash-status" role="status" aria-live="polite" aria-atomic="true">INITIALIZING EMPIRE...</p>
-      <button class="splash-retry" type="button" hidden>RETRY SECURE CONNECTION ↗</button>
-      <p class="splash-footnote">EDUCATIONAL SIMULATION · VIRTUAL G ONLY</p>
-    </div>
+    <section class="splash-wealth splash-scene-wealth" aria-label="Ascendancy. From concrete to crown.">
+      <div class="splash-wealth-orbit splash-orbit-one" aria-hidden="true"></div>
+      <div class="splash-wealth-orbit splash-orbit-two" aria-hidden="true"></div>
+      <span class="splash-wealth-kicker">THE ART OF THE RISE</span>
+      <h2 class="splash-wealth-word" aria-label="ASCENDANCY">${springLetters('ASCENDANCY')}</h2>
+      <div class="splash-wealth-rule" aria-hidden="true"><span>✦</span></div>
+      <p class="splash-wealth-sub">FROM <strong>CONCRETE</strong> TO <em>CROWN.</em></p>
+      <p class="splash-wealth-note">OPPORTUNITY DOESN'T WAIT. NEITHER DOES AMBITION.</p>
+      <span class="splash-wealth-filigree" aria-hidden="true">G · W · A · P</span>
+    </section>
+    <section class="splash-boot splash-scene-loading" aria-label="Securing your empire access">
+      <span class="splash-loader-kicker">GWAPOHOLICS / PRIVATE ENTRY</span>
+      <div class="splash-loader-mark" aria-hidden="true">
+        <span class="splash-loader-ring"></span>
+        <span class="splash-loader-ring splash-loader-ring-inner"></span>
+        <img src="./brand.svg" width="56" height="56" alt="" decoding="async">
+      </div>
+      <h2 class="splash-loader-title">YOUR NEXT <em>MOVE.</em></h2>
+      <p class="splash-loader-caption">A WORLD OF OPPORTUNITY IS OPENING.</p>
+      <div class="splash-loading-progress">
+        <div class="splash-boot-head"><span>SECURE ENTRY <b>◉</b></span><span>SEASON 01 / ARRIVING</span></div>
+        <div class="splash-meter" role="progressbar" aria-label="Opening sequence" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8"><span class="splash-meter-fill"></span></div>
+        <p class="splash-status" role="status" aria-live="polite" aria-atomic="true">PREPARING SECURE ENTRY...</p>
+        <button class="splash-retry" type="button" hidden>RETRY SECURE CONNECTION ↗</button>
+        <p class="splash-footnote">EDUCATIONAL SIMULATION · VIRTUAL G ONLY</p>
+      </div>
+    </section>
     <button class="splash-skip" type="button" aria-label="Skip the opening animation and enter the game" hidden>SKIP INTRO <span aria-hidden="true">↗</span></button>
   </section>`;
 
@@ -89,7 +127,12 @@ export function createOpeningSplash({
     ['title', timing.titleMs],
     ['tagline', timing.taglineMs],
     ['deck', timing.deckMs],
-    ['boot', timing.bootMs]
+    ['opening-out', timing.openingExitMs],
+    ['wealth', timing.wealthMs],
+    ['wealth-word', timing.wealthWordMs],
+    ['wealth-sub', timing.wealthSubMs],
+    ['wealth-out', timing.wealthExitMs],
+    ['loading', timing.loadingMs]
   ]) stage.style.setProperty(`--splash-${name}-delay`, `${ms}ms`);
 
   const skip = host.querySelector('.splash-skip');
@@ -158,6 +201,7 @@ export function createOpeningSplash({
   }
   function failure(stalled = false) {
     if (closed || resolved) return;
+    host.classList.remove('splash-reconnecting');
     host.classList.add('splash-stalled');
     retry.hidden = false;
     retry.disabled = false;
@@ -173,7 +217,7 @@ export function createOpeningSplash({
     retry.removeEventListener('click', tryAgain);
     skip.removeEventListener('click', skipIntro);
     host.replaceChildren();
-    host.classList.remove('splash-active', 'splash-exit', 'splash-stalled', 'story-static');
+    host.classList.remove('splash-active', 'splash-exit', 'splash-stalled', 'splash-reconnecting', 'story-static');
     doc.documentElement.classList.remove('splash-open');
     app.inert = priorInert;
     if (priorAria === null) app.removeAttribute('aria-hidden');
@@ -206,7 +250,10 @@ export function createOpeningSplash({
     cancel(skipTimer);
     skip.hidden = true;
     hideRetry();
-    if (token > 1) cue('RECONNECTING TO EMPIRE...', 0.55);
+    if (token > 1) {
+      host.classList.add('splash-reconnecting');
+      cue('RECONNECTING TO EMPIRE...', 0.45);
+    }
     stallTimer = queue(() => {
       if (token === attempt && !resolved) failure(true);
     }, timing.stallMs);
@@ -229,6 +276,7 @@ export function createOpeningSplash({
     if (closed) return;
     retry.disabled = true;
     hideRetry();
+    host.classList.add('splash-reconnecting');
     cue('RECONNECTING TO EMPIRE...', 0.45, true);
     try { onRetry(); }
     catch { failure(); }
@@ -249,7 +297,7 @@ export function createOpeningSplash({
   }, timing.brandMs + 450);
   queue(() => {
     if (!host.classList.contains('splash-stalled')) {
-      cue(resolved ? 'PLAYER VERIFIED · PREPARING STAGE...' : 'SECURING PLAYER SESSION...', 0.62);
+      cue(resolved ? 'PLAYER VERIFIED · OPENING YOUR WORLD...' : 'SECURING PLAYER SESSION...', 0.62);
     }
   }, timing.syncMs);
   queue(() => {
