@@ -1,5 +1,7 @@
 import { BOT_USERNAME } from "./config.mjs";
 import { createSensoryLayer } from "./sensory-layer.mjs";
+import { createAudioDirector, AUDIO_EVENTS } from "./audio-director.mjs";
+import { createToneAdapter } from "./tone-adapter.mjs";
 import { createOpeningSplash } from "./opening-splash.mjs";
 import { startTelegramSession, refreshPlayer, sendGameCommand } from "./server-client.mjs";
 import { homeNarrator, cinematicMotionClass, toggleCinematicMotion, storyMotionEnabled, storyStage, introPanel, decisionPanel, consequencePanel, resultPanel, resultScore } from "./cinematic-view.mjs";
@@ -22,6 +24,13 @@ import {
 const root = document.querySelector("#app");
 // A single presentation-only controller handles every audio and haptic cue.
 const sensory = createSensoryLayer();
+// Disabled by default; a future locally bundled Tone namespace can be injected after device QA.
+const audioDirector = createAudioDirector({ sensory, adapter: createToneAdapter({
+  Tone: null,
+  enabled: false,
+  getSettings: () => sensory.settings,
+  isVisible: () => document.visibilityState !== "hidden"
+}) });
 const tg = window.Telegram?.WebApp;
 const isTelegram = Boolean(tg?.initData);
 const localPreview = ["localhost", "127.0.0.1"].includes(location.hostname) || location.protocol === "file:";
@@ -932,7 +941,7 @@ setupTelegram();
 const splash = canPlay ? createOpeningSplash({
   host: document.getElementById('opening-splash'),
   app: root,
-  onBrandImpact: () => haptic('medium'),
+  onBrandImpact: () => { haptic('medium'); audioDirector.emit(AUDIO_EVENTS.SPLASH_REVEAL); },
   onRetry: () => { if (remoteRequested) void authenticatePlayer(); },
   motionEnabled: storyMotionEnabled()
 }) : null;
