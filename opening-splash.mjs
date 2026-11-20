@@ -4,12 +4,14 @@
  * The caller owns Telegram ready()/expand() and the authoritative auth request.
  */
 export const SPLASH_TIMING = Object.freeze({
-  brandMs: 460,
-  syncMs: 1170,
-  enterMs: 2140,
-  floorMs: 1900,
-  targetMs: 2550,
-  handoffMs: 260,
+  // Intentional 2x cinematic tempo (~5.62s incl. fade). Keep the 9s
+  // connection-stall guard independent of presentation pacing.
+  brandMs: 920,
+  syncMs: 2340,
+  enterMs: 4280,
+  floorMs: 3800,
+  targetMs: 5100,
+  handoffMs: 520,
   stallMs: 9000
 });
 
@@ -122,7 +124,9 @@ export function createOpeningSplash({
     cancel(stallTimer);
     hideRetry();
     const elapsed = clock() - begunAt;
-    queue(() => cue('ENTERING STAGE...', 1), Math.max(0, timing.enterMs - elapsed));
+    // Before the scheduled stage cue, preserve progressive visual beats even
+    // if authentication resolved immediately. A slow login completes now.
+    if (elapsed >= timing.enterMs) cue('ENTERING STAGE...', 1);
     queue(() => {
       host.classList.add('splash-exit');
       queue(finish, motionEnabled ? timing.handoffMs : 0);
@@ -173,9 +177,17 @@ export function createOpeningSplash({
     if (doc.visibilityState !== 'hidden') {
       try { onBrandImpact(); } catch { /* no Telegram haptics in ordinary browsers */ }
     }
-  }, timing.brandMs + 110);
-  queue(() => { if (!resolved && !host.classList.contains('splash-stalled')) cue('SYNCING PLAYER & RUN...', 0.62); }, timing.syncMs);
-  queue(() => { if (!resolved && !host.classList.contains('splash-stalled')) cue('VERIFYING EMPIRE SESSION...', 0.84); }, timing.enterMs);
+  }, timing.brandMs + 220);
+  queue(() => {
+    if (!host.classList.contains('splash-stalled')) {
+      cue(resolved ? 'PLAYER VERIFIED · PREPARING STAGE...' : 'SYNCING PLAYER & RUN...', 0.62);
+    }
+  }, timing.syncMs);
+  queue(() => {
+    if (!host.classList.contains('splash-stalled')) {
+      cue(resolved ? 'ENTERING STAGE...' : 'VERIFYING EMPIRE SESSION...', resolved ? 1 : 0.84);
+    }
+  }, timing.enterMs);
 
   return { track, complete, fail: () => failure(), dispose: finish, get active() { return !closed; } };
 }
