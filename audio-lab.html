@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>GWAPOHOLICS Audio Lab — Local Only</title>
+<style>body{background:#090d09;color:#f3f5f3;font:16px system-ui;padding:2rem;max-width:35rem;margin:auto}button{background:#13dd13;color:#071007;border:0;border-radius:8px;padding:1rem;margin:.4rem;font-weight:700}button:disabled{opacity:.45}small{display:block;color:#a9b4aa;margin:1rem 0}</style></head>
+<body><h1>GWAPOHOLICS · Audio Lab</h1><p>Developer-only, isolated audio experiment. No gameplay, accounts, or virtual currency.</p>
+<p id="status" role="status">Audio disabled. No external requests will be made.</p>
+<button id="unlock">Unlock local audio</button><button id="reveal" disabled>Play reveal</button><button id="success" disabled>Play success</button><button id="mute">Mute effects</button>
+<small>Requires a locally built ./vendor/tone.mjs. The experiment does not load remote scripts or activate automatically.</small>
+<script type="module">
+import { createToneAdapter } from "./tone-adapter.mjs";
+import { createAudioDirector, AUDIO_EVENTS } from "./audio-director.mjs";
+const params = new URLSearchParams(location.search);
+const local = ["localhost","127.0.0.1"].includes(location.hostname);
+const status = document.querySelector("#status");
+let muted = false;
+let Tone = null;
+let director = null;
+if (!local || params.get("experiment") !== "audio") {
+  status.textContent = "Lab locked. Use localhost with ?experiment=audio.";
+  document.querySelector("#unlock").disabled = true;
+} else {
+  document.querySelector("#unlock").addEventListener("click", async () => {
+    try {
+      Tone ??= await import("./vendor/tone.mjs");
+      await Tone.start(); // Explicit click; never unlock on page load.
+      director?.dispose();
+      director = createAudioDirector({ adapter: createToneAdapter({
+        Tone, enabled: true,
+        getSettings: () => ({ effects: !muted, effectsVolume: 0.32 }),
+        isVisible: () => document.visibilityState === "visible"
+      }) });
+      document.querySelector("#reveal").disabled = false;
+      document.querySelector("#success").disabled = false;
+      status.textContent = "Local Tone.js ready. Experimental audio only.";
+    } catch {
+      status.textContent = "Local Tone.js bundle unavailable or audio unlock rejected.";
+    }
+  });
+  document.querySelector("#reveal").addEventListener("click", () => director?.emit(AUDIO_EVENTS.SPLASH_REVEAL));
+  document.querySelector("#success").addEventListener("click", () => director?.emit(AUDIO_EVENTS.BUSINESS_CONFIRMED, { confirmed: true, receiptId: "lab:" + crypto.randomUUID() }));
+  document.querySelector("#mute").addEventListener("click", () => {
+    muted = !muted;
+    document.querySelector("#mute").textContent = muted ? "Unmute effects" : "Mute effects";
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") { director?.dispose(); director = null; document.querySelector("#reveal").disabled = true; document.querySelector("#success").disabled = true; status.textContent = "Paused. Unlock again to resume."; }
+  });
+}
+</script></body></html>
