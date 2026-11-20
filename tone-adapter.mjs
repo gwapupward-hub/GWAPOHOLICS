@@ -6,6 +6,7 @@
 export function createToneAdapter({ Tone, enabled = false, getSettings = () => ({}), isVisible = () => true } = {}) {
   let synth = null;
   let disposed = false;
+  let nextAvailableAt = 0;
   const pitches = Object.freeze({
     "splash.reveal": ["C4", "G4"],
     "business.confirmed": ["C5", "E5", "G5"],
@@ -20,8 +21,12 @@ export function createToneAdapter({ Tone, enabled = false, getSettings = () => (
     if (Tone.context?.state !== "running") return false;
     try {
       if (!synth) synth = new Tone.Synth({ oscillator: { type: "sine" }, envelope: { attack: 0.02, decay: 0.12, sustain: 0.1, release: 0.25 } }).toDestination();
-      const start = Tone.now() + 0.015;
+      const now = Tone.now();
+      // Avoid stacked melodies when a user taps repeatedly.
+      if (now < nextAvailableAt) return false;
+      const start = now + 0.015;
       for (const [i, note] of pitches[event].entries()) synth.triggerAttackRelease(note, "16n", start + i * 0.11, Math.min(0.4, Number(settings.effectsVolume ?? 0.3) * 0.4));
+      nextAvailableAt = start + pitches[event].length * 0.11 + 0.08;
       return true;
     } catch { return false; }
   }
