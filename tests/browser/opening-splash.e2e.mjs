@@ -56,10 +56,28 @@ for (const engine of ENGINES) {
       assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
       assert.equal(await page.locator('.splash-badge img').getAttribute('src'), './brand.svg');
       assert.match(await page.locator('.splash-title').textContent(), /GWAPOHOLICS/);
-      // Double-tempo must be visibly cinematic, not merely a prolonged last frame.
-      await page.waitForTimeout(3000);
-      assert.equal(await page.locator('#opening-splash.splash-active').count(), 1);
-      assert.ok(Number(await page.locator('.splash-meter').getAttribute('aria-valuenow')) >= 62);
+      // A deliberate storyboard: badge gets the first spotlight, then title,
+      // then tagline. Avoid overlapping all the initial pop-in animations.
+      await page.waitForTimeout(2100);
+      const early = await page.evaluate(() => ({
+        badge: Number(getComputedStyle(document.querySelector('.splash-badge')).opacity),
+        title: Number(getComputedStyle(document.querySelector('.splash-title')).opacity),
+        tagline: Number(getComputedStyle(document.querySelector('.splash-tagline')).opacity)
+      }));
+      assert.ok(early.badge > 0.9, JSON.stringify(early));
+      assert.ok(early.title < 0.05, JSON.stringify(early));
+      assert.ok(early.tagline < 0.05, JSON.stringify(early));
+      await page.waitForTimeout(1850);
+      const named = await page.evaluate(() => ({
+        title: Number(getComputedStyle(document.querySelector('.splash-title')).opacity),
+        tagline: Number(getComputedStyle(document.querySelector('.splash-tagline')).opacity)
+      }));
+      assert.ok(named.title > 0.85, JSON.stringify(named));
+      assert.ok(named.tagline < 0.05, JSON.stringify(named));
+      assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
+      await page.locator('.splash-skip').waitFor({ state: 'visible', timeout: 4000 });
+      await page.locator('.splash-status').getByText(/READY TO BUILD/).waitFor({ timeout: 9000 });
+      assert.equal(await page.locator('.splash-meter').getAttribute('aria-valuenow'), '100');
       await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 12000 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
       assert.equal(await page.locator('#app').getAttribute('aria-hidden'), null);
@@ -77,6 +95,7 @@ for (const engine of ENGINES) {
       await page.locator('#opening-splash.splash-active').waitFor();
       await page.locator('.splash-retry').waitFor({ state: 'visible', timeout: 4000 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
+      assert.equal(await page.locator('.splash-skip').isVisible(), false);
       const animation = await page.locator('.splash-motes i').first().evaluate(el => getComputedStyle(el).animationName);
       assert.equal(animation, 'none');
       const viewport = await page.evaluate(() => ({ width: window.innerWidth, scrollWidth: document.documentElement.scrollWidth,
@@ -88,7 +107,10 @@ for (const engine of ENGINES) {
       }));
       assert.ok(viewport.scrollWidth <= viewport.width + 1, JSON.stringify(viewport));
       await page.locator('.splash-retry').tap();
-      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 12000 });
+      await page.locator('.splash-skip').waitFor({ state: 'visible', timeout: 6500 });
+      assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
+      await page.locator('.splash-skip').tap();
+      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 7000 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
       assert.ok(await page.locator('.arcade-home').count() === 1);
       assert.equal(requests(), 2);
