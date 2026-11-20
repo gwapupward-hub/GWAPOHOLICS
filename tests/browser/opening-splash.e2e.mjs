@@ -75,8 +75,14 @@ for (const engine of ENGINES) {
       assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
       const animation = await page.locator('.splash-motes i').first().evaluate(el => getComputedStyle(el).animationName);
       assert.equal(animation, 'none');
-      const noOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1);
-      assert.equal(noOverflow, true);
+      const viewport = await page.evaluate(() => ({ width: window.innerWidth, scrollWidth: document.documentElement.scrollWidth,
+        offenders: [...document.querySelectorAll('body *')].filter(el => {
+          const box = el.getBoundingClientRect();
+          return box.right > window.innerWidth + 1 || box.left < -1;
+        }).slice(0, 8).map(el => ({ tag: el.tagName, cls: el.className?.baseVal ?? el.className,
+          width: Math.round(el.getBoundingClientRect().width) }))
+      }));
+      assert.ok(viewport.scrollWidth <= viewport.width + 1, JSON.stringify(viewport));
       await page.locator('.splash-retry').tap();
       await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 8000 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
