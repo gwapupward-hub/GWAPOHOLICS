@@ -589,7 +589,7 @@ function render(options = {}) {
     const msg=remoteStatus==='connecting'
       ? 'Verifying your Telegram account and retrieving your progress.'
       : 'Secure sign-in is unavailable. Your virtual coins have not changed.';
-    root.innerHTML='<main class="app-shell"><div class="app-inner"><section class="arcade-flow page-enter" style="padding:28px 18px"><h1 class="arcade-title">GWAPOHOLICS.</h1><p class="arcade-hook">'+msg+'</p><button class="arcade-button" data-action="auth-retry">RETRY SECURE SIGN-IN →</button><p class="arcade-fine">For local playtesting only use ?demo=1. Demo coins do not become live account coins.</p></section></div></main>';
+    root.innerHTML='<main class="app-shell"><div class="app-inner"><section class="arcade-flow page-enter boot-auth-gate" style="padding:28px 18px"><h1 class="arcade-title">GWAPOHOLICS.</h1><p class="arcade-hook">'+msg+'</p><button class="arcade-button" data-action="auth-retry">RETRY SECURE SIGN-IN →</button><p class="arcade-fine">For local playtesting only use ?demo=1. Demo coins do not become live account coins.</p></section></div></main>';
     return;
   }
   if (!canPlay) { leaveStory(); root.innerHTML = `<main class="app-shell"><div class="app-inner">${gatePage()}</div></main>`; return; }
