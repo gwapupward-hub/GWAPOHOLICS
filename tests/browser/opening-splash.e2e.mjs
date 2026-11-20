@@ -78,11 +78,36 @@ for (const engine of ENGINES) {
       // sample that can drift on busy WebKit CI runners.
       assert.equal(named.titleDelay, '3s', JSON.stringify(named));
       assert.equal(named.taglineDelay, '4.22s', JSON.stringify(named));
+      const sceneTimings = await page.evaluate(() => ({
+        wealthEnter: getComputedStyle(document.querySelector('.splash-wealth')).animationDelay,
+        wealthLetters: getComputedStyle(document.querySelector('.splash-wealth-word .splash-letter')).animationDelay,
+        loading: getComputedStyle(document.querySelector('.splash-scene-loading')).animationDelay,
+        titleSpring: getComputedStyle(document.querySelector('.splash-title .splash-letter')).animationName
+      }));
+      assert.ok(sceneTimings.wealthEnter.includes('7.02s'), JSON.stringify(sceneTimings));
+      assert.equal(sceneTimings.wealthLetters, '7.47s', JSON.stringify(sceneTimings));
+      assert.equal(sceneTimings.loading, '11.61s', JSON.stringify(sceneTimings));
+      assert.equal(sceneTimings.titleSpring, 'splash-letter-spring', JSON.stringify(sceneTimings));
       assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
       await page.locator('.splash-skip').waitFor({ state: 'visible', timeout: 4000 });
-      await page.getByText(/READY TO BUILD · ENTERING EMPIRE/).waitFor({ timeout: 9000 });
+      await page.waitForTimeout(4400);
+      const wealthWindow = await page.evaluate(() => ({
+        intro: Number(getComputedStyle(document.querySelector('.splash-scene-opening')).opacity),
+        wealth: Number(getComputedStyle(document.querySelector('.splash-scene-wealth')).opacity),
+        loading: Number(getComputedStyle(document.querySelector('.splash-scene-loading')).opacity)
+      }));
+      assert.ok(wealthWindow.intro < 0.05 && wealthWindow.wealth > 0.9 &&
+        wealthWindow.loading < 0.05, JSON.stringify(wealthWindow));
+      await page.waitForTimeout(4800);
+      const loadingWindow = await page.evaluate(() => ({
+        wealth: Number(getComputedStyle(document.querySelector('.splash-scene-wealth')).opacity),
+        loading: Number(getComputedStyle(document.querySelector('.splash-scene-loading')).opacity),
+        text: document.querySelector('.splash-status')?.textContent
+      }));
+      assert.ok(loadingWindow.wealth < 0.05 && loadingWindow.loading > 0.9, JSON.stringify(loadingWindow));
+      await page.getByText(/READY TO BUILD · ENTERING EMPIRE/).waitFor({ timeout: 6000 });
       assert.equal(await page.locator('.splash-meter').getAttribute('aria-valuenow'), '100');
-      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 12000 });
+      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 7000 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
       assert.equal(await page.locator('#app').getAttribute('aria-hidden'), null);
       assert.ok(await page.locator('.arcade-home').count() === 1);
@@ -102,6 +127,8 @@ for (const engine of ENGINES) {
       assert.equal(await page.locator('.splash-skip').isVisible(), false);
       const animation = await page.locator('.splash-motes i').first().evaluate(el => getComputedStyle(el).animationName);
       assert.equal(animation, 'none');
+      assert.equal(await page.locator('.splash-loader-ring').first().evaluate(el => getComputedStyle(el).animationName), 'none');
+      assert.ok(await page.locator('.splash-scene-loading').evaluate(el => Number(getComputedStyle(el).opacity)) > 0.99);
       const viewport = await page.evaluate(() => ({ width: window.innerWidth, scrollWidth: document.documentElement.scrollWidth,
         offenders: [...document.querySelectorAll('body *')].filter(el => {
           const box = el.getBoundingClientRect();
