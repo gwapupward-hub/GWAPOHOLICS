@@ -179,3 +179,9 @@ html.splash-open,html.splash-open body{overscroll-behavior:none}
   #opening-splash.splash-exit{transform:translate3d(-50%,0,0)}
   #opening-splash .splash-meter-fill{transition:transform .16s ease!important}
 }
+
+/* Narrow WebKit fallback: long sign-in title must not widen the document. */
+@media(max-width:370px){
+  .boot-auth-gate{max-width:100%;overflow-x:clip}
+  .boot-auth-gate .arcade-title{font-size:clamp(38px,12vw,49px);line-height:1;max-width:100%;overflow-wrap:anywhere}
+}
