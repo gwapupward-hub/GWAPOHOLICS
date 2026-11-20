@@ -1,5 +1,6 @@
 import { BOT_USERNAME } from "./config.mjs";
 import { createSensoryLayer } from "./sensory-layer.mjs";
+import { createOpeningSplash } from "./opening-splash.mjs";
 import { startTelegramSession, refreshPlayer, sendGameCommand } from "./server-client.mjs";
 import { homeNarrator, cinematicMotionClass, toggleCinematicMotion, storyMotionEnabled, storyStage, introPanel, decisionPanel, consequencePanel, resultPanel, resultScore } from "./cinematic-view.mjs";
 import { narrativeScene, sceneDirection, reactionFor, hasStoryMode, STORY_CHARACTERS, CHARACTER_ART, storyAssetExt } from "./story-runtime.mjs";
@@ -147,16 +148,43 @@ async function resyncRemote(){
   try{game=await refreshPlayer();leaveStory();render()}
   catch{showToast('Connection interrupted. Confirmed progress is saved on the server.')}
 }
+// Ignore stale auth replies when a slow request outlives a manual retry.
+let authAttempt = 0;
 async function authenticatePlayer(){
+  const attempt = ++authAttempt;
   remoteStatus='connecting';render();
-  try{
-    game=await startTelegramSession(tg?.initData);
-    remoteStatus='ready';view='home';caseId=null;stage='brief';
-  }catch{
-    remoteStatus='failed';
-  }
-  render();
-  if(remoteStatus==='ready')loadFounder();
+  const task = (async () => {
+    try {
+      const next = await startTelegramSession(tg?.initData);
+      if (attempt !== authAttempt) return false;
+      game=next;
+      remoteStatus='ready';view='home';caseId=null;stage='brief';
+      render();
+      // Founder-mode probing is optional: failure must not hide valid v1 gameplay.
+      void loadFounder().catch(() => {});
+      await warmOpeningAssets();
+      return true;
+    } catch {
+      if (attempt !== authAttempt) return false;
+      remoteStatus='failed';
+      render();
+      return false;
+    }
+  })();
+  if (splash) void splash.track(task);
+  return task;
+}
+
+// Fonts and the approved brand SVG should be warm for the first paint.
+// Optional resources have a bounded budget; missing assets use CSS fallbacks.
+async function warmOpeningAssets(){
+  if (!splash) return;
+  const logo = document.querySelector('#opening-splash .splash-badge img');
+  const jobs = [document.fonts?.ready, logo?.decode?.()].filter(Boolean);
+  await Promise.race([
+    Promise.allSettled(jobs),
+    new Promise(resolve => window.setTimeout(resolve, 650))
+  ]);
 }
 
 function changeView(next) {
@@ -901,5 +929,15 @@ root.addEventListener("error", (event) => {
 }, true);
 
 setupTelegram();
-if(remoteRequested)authenticatePlayer();
-else render();
+const splash = canPlay ? createOpeningSplash({
+  host: document.getElementById('opening-splash'),
+  app: root,
+  onBrandImpact: () => haptic('medium'),
+  onRetry: () => { if (remoteRequested) void authenticatePlayer(); },
+  motionEnabled: storyMotionEnabled()
+}) : null;
+if (remoteRequested) void authenticatePlayer();
+else {
+  render();
+  if (splash) void splash.track(warmOpeningAssets().then(() => true));
+}
