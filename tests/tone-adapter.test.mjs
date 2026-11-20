@@ -33,3 +33,21 @@ test("enabled adapter schedules a confirmed cue and disposes", () => {
   assert.equal(disposed, 1);
   assert.equal(adapter.play("business.confirmed"), false);
 });
+
+test("rapid repeat cues do not overlap and can resume after cooldown", () => {
+  let clock = 5;
+  const notes = [];
+  const Tone = { context: { state: "running" }, now: () => clock, Synth: class {
+    toDestination() { return this; }
+    triggerAttackRelease(...args) { notes.push(args); }
+    dispose() {}
+  } };
+  const adapter = createToneAdapter({ Tone, enabled: true, getSettings: () => ({ effects: true, effectsVolume: 0.5 }) });
+  assert.equal(adapter.play("splash.reveal"), true);
+  assert.equal(adapter.play("splash.reveal"), false);
+  assert.equal(notes.length, 2);
+  clock += 1;
+  assert.equal(adapter.play("splash.reveal"), true);
+  assert.equal(notes.length, 4);
+  adapter.dispose();
+});
