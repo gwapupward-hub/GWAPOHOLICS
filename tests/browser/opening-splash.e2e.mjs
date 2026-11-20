@@ -69,11 +69,15 @@ for (const engine of ENGINES) {
       assert.ok(early.tagline < 0.05, JSON.stringify(early));
       await page.waitForTimeout(1850);
       const named = await page.evaluate(() => ({
-        title: Number(getComputedStyle(document.querySelector('.splash-title')).opacity),
-        tagline: Number(getComputedStyle(document.querySelector('.splash-tagline')).opacity)
+        titleOpacity: Number(getComputedStyle(document.querySelector('.splash-title')).opacity),
+        titleDelay: getComputedStyle(document.querySelector('.splash-title')).animationDelay,
+        taglineDelay: getComputedStyle(document.querySelector('.splash-tagline')).animationDelay
       }));
-      assert.ok(named.title > 0.85, JSON.stringify(named));
-      assert.ok(named.tagline < 0.05, JSON.stringify(named));
+      assert.ok(named.titleOpacity > 0.85, JSON.stringify(named));
+      // Check the storyboard's actual browser-resolved timing, not a wall-clock
+      // sample that can drift on busy WebKit CI runners.
+      assert.equal(named.titleDelay, '3s', JSON.stringify(named));
+      assert.equal(named.taglineDelay, '4.22s', JSON.stringify(named));
       assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
       await page.locator('.splash-skip').waitFor({ state: 'visible', timeout: 4000 });
       await page.getByText(/READY TO BUILD · ENTERING EMPIRE/).waitFor({ timeout: 9000 });
