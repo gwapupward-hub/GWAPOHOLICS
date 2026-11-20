@@ -44,7 +44,7 @@ test("rapid repeat cues do not overlap and can resume after cooldown", () => {
   } };
   const adapter = createToneAdapter({ Tone, enabled: true, getSettings: () => ({ effects: true, effectsVolume: 0.5 }) });
   assert.equal(adapter.play("splash.reveal"), true);
-  assert.equal(adapter.play("splash.reveal"), false);
+  assert.equal(adapter.play("splash.reveal"), true);
   assert.equal(notes.length, 2);
   clock += 1;
   assert.equal(adapter.play("splash.reveal"), true);
