@@ -107,11 +107,29 @@ for (const engine of ENGINES) {
       }));
       assert.ok(viewport.scrollWidth <= viewport.width + 1, JSON.stringify(viewport));
       await page.locator('.splash-retry').tap();
+      // Reduced-motion players get a prompt static reveal without an 8s hold.
+      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 5500 });
+      assert.equal(await page.locator('.splash-skip').count(), 0);
+      assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
+      assert.ok(await page.locator('.arcade-home').count() === 1);
+      assert.equal(requests(), 2);
+      assert.deepEqual(pageErrors, []);
+    } finally { await browser.close(); }
+  });
+
+  test(`[${engine.name}] authenticated players may skip the intro without bypassing session checks`, async () => {
+    const { browser, page, pageErrors, requests } = await open(engine, { failFirst: true });
+    try {
+      await page.locator('.splash-retry').waitFor({ state: 'visible', timeout: 4000 });
+      assert.equal(await page.locator('.splash-skip').isVisible(), false);
+      assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
+      await page.locator('.splash-retry').tap();
       await page.locator('.splash-skip').waitFor({ state: 'visible', timeout: 6500 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
       await page.locator('.splash-skip').tap();
-      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 7000 });
+      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 3500 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
+      assert.equal(await page.locator('#app').getAttribute('aria-hidden'), null);
       assert.ok(await page.locator('.arcade-home').count() === 1);
       assert.equal(requests(), 2);
       assert.deepEqual(pageErrors, []);
