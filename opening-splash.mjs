@@ -130,7 +130,7 @@ export function createOpeningSplash({
     }, 280);
   }
   function revealSkip() {
-    if (closed || exiting || !resolved) return;
+    if (closed || exiting || !resolved || !motionEnabled) return;
     const remaining = Math.max(0, timing.skipMs - (clock() - begunAt));
     cancel(skipTimer);
     skipTimer = queue(() => {
@@ -187,6 +187,12 @@ export function createOpeningSplash({
     const elapsed = clock() - begunAt;
     // Quick auth stays in the storyboard; slow auth resolves truthfully and
     // gets a calm confirmation before handoff, without replaying intro beats.
+    if (!motionEnabled) {
+      // No animation to watch: respect reduced-motion users' time.
+      cue('READY TO BUILD · ENTERING EMPIRE...', 1, true);
+      exitTimer = queue(beginHandoff, 680);
+      return;
+    }
     if (elapsed >= timing.enterMs) cue('READY TO BUILD · ENTERING EMPIRE...', 1);
     revealSkip();
     exitTimer = queue(beginHandoff, splashExitDelay(elapsed, timing));
