@@ -56,7 +56,11 @@ for (const engine of ENGINES) {
       assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
       assert.equal(await page.locator('.splash-badge img').getAttribute('src'), './brand.svg');
       assert.match(await page.locator('.splash-title').textContent(), /GWAPOHOLICS/);
-      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 8000 });
+      // Double-tempo must be visibly cinematic, not merely a prolonged last frame.
+      await page.waitForTimeout(3000);
+      assert.equal(await page.locator('#opening-splash.splash-active').count(), 1);
+      assert.ok(Number(await page.locator('.splash-meter').getAttribute('aria-valuenow')) >= 62);
+      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 12000 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
       assert.equal(await page.locator('#app').getAttribute('aria-hidden'), null);
       assert.ok(await page.locator('.arcade-home').count() === 1);
@@ -84,7 +88,7 @@ for (const engine of ENGINES) {
       }));
       assert.ok(viewport.scrollWidth <= viewport.width + 1, JSON.stringify(viewport));
       await page.locator('.splash-retry').tap();
-      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 8000 });
+      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 12000 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
       assert.ok(await page.locator('.arcade-home').count() === 1);
       assert.equal(requests(), 2);
