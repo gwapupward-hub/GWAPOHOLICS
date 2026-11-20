@@ -56,7 +56,58 @@ for (const engine of ENGINES) {
       assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
       assert.equal(await page.locator('.splash-badge img').getAttribute('src'), './brand.svg');
       assert.match(await page.locator('.splash-title').textContent(), /GWAPOHOLICS/);
-      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 8000 });
+      // A deliberate storyboard: badge gets the first spotlight, then title,
+      // then tagline. Avoid overlapping all the initial pop-in animations.
+      await page.waitForTimeout(2100);
+      const early = await page.evaluate(() => ({
+        badge: Number(getComputedStyle(document.querySelector('.splash-badge')).opacity),
+        title: Number(getComputedStyle(document.querySelector('.splash-title')).opacity),
+        tagline: Number(getComputedStyle(document.querySelector('.splash-tagline')).opacity)
+      }));
+      assert.ok(early.badge > 0.9, JSON.stringify(early));
+      assert.ok(early.title < 0.05, JSON.stringify(early));
+      assert.ok(early.tagline < 0.05, JSON.stringify(early));
+      await page.waitForTimeout(1850);
+      const named = await page.evaluate(() => ({
+        titleOpacity: Number(getComputedStyle(document.querySelector('.splash-title')).opacity),
+        titleDelay: getComputedStyle(document.querySelector('.splash-title')).animationDelay,
+        taglineDelay: getComputedStyle(document.querySelector('.splash-tagline')).animationDelay
+      }));
+      assert.ok(named.titleOpacity > 0.85, JSON.stringify(named));
+      // Check the storyboard's actual browser-resolved timing, not a wall-clock
+      // sample that can drift on busy WebKit CI runners.
+      assert.equal(named.titleDelay, '3s', JSON.stringify(named));
+      assert.equal(named.taglineDelay, '4.22s', JSON.stringify(named));
+      const sceneTimings = await page.evaluate(() => ({
+        wealthEnter: getComputedStyle(document.querySelector('.splash-wealth')).animationDelay,
+        wealthLetters: getComputedStyle(document.querySelector('.splash-wealth-word .splash-letter')).animationDelay,
+        loading: getComputedStyle(document.querySelector('.splash-scene-loading')).animationDelay,
+        titleSpring: getComputedStyle(document.querySelector('.splash-title .splash-letter')).animationName
+      }));
+      assert.ok(sceneTimings.wealthEnter.includes('7.02s'), JSON.stringify(sceneTimings));
+      assert.equal(sceneTimings.wealthLetters, '7.47s', JSON.stringify(sceneTimings));
+      assert.equal(sceneTimings.loading, '11.61s', JSON.stringify(sceneTimings));
+      assert.equal(sceneTimings.titleSpring, 'splash-letter-spring', JSON.stringify(sceneTimings));
+      assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
+      await page.locator('.splash-skip').waitFor({ state: 'visible', timeout: 4000 });
+      await page.waitForTimeout(4400);
+      const wealthWindow = await page.evaluate(() => ({
+        intro: Number(getComputedStyle(document.querySelector('.splash-scene-opening')).opacity),
+        wealth: Number(getComputedStyle(document.querySelector('.splash-scene-wealth')).opacity),
+        loading: Number(getComputedStyle(document.querySelector('.splash-scene-loading')).opacity)
+      }));
+      assert.ok(wealthWindow.intro < 0.05 && wealthWindow.wealth > 0.9 &&
+        wealthWindow.loading < 0.05, JSON.stringify(wealthWindow));
+      await page.waitForTimeout(4800);
+      const loadingWindow = await page.evaluate(() => ({
+        wealth: Number(getComputedStyle(document.querySelector('.splash-scene-wealth')).opacity),
+        loading: Number(getComputedStyle(document.querySelector('.splash-scene-loading')).opacity),
+        text: document.querySelector('.splash-status')?.textContent
+      }));
+      assert.ok(loadingWindow.wealth < 0.05 && loadingWindow.loading > 0.9, JSON.stringify(loadingWindow));
+      await page.getByText(/READY TO BUILD · ENTERING EMPIRE/).waitFor({ timeout: 6000 });
+      assert.equal(await page.locator('.splash-meter').getAttribute('aria-valuenow'), '100');
+      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 7000 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
       assert.equal(await page.locator('#app').getAttribute('aria-hidden'), null);
       assert.ok(await page.locator('.arcade-home').count() === 1);
@@ -73,8 +124,11 @@ for (const engine of ENGINES) {
       await page.locator('#opening-splash.splash-active').waitFor();
       await page.locator('.splash-retry').waitFor({ state: 'visible', timeout: 4000 });
       assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
+      assert.equal(await page.locator('.splash-skip').isVisible(), false);
       const animation = await page.locator('.splash-motes i').first().evaluate(el => getComputedStyle(el).animationName);
       assert.equal(animation, 'none');
+      assert.equal(await page.locator('.splash-loader-ring').first().evaluate(el => getComputedStyle(el).animationName), 'none');
+      assert.ok(await page.locator('.splash-scene-loading').evaluate(el => Number(getComputedStyle(el).opacity)) > 0.99);
       const viewport = await page.evaluate(() => ({ width: window.innerWidth, scrollWidth: document.documentElement.scrollWidth,
         offenders: [...document.querySelectorAll('body *')].filter(el => {
           const box = el.getBoundingClientRect();
@@ -84,8 +138,29 @@ for (const engine of ENGINES) {
       }));
       assert.ok(viewport.scrollWidth <= viewport.width + 1, JSON.stringify(viewport));
       await page.locator('.splash-retry').tap();
-      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 8000 });
+      // Reduced-motion players get a prompt static reveal without an 8s hold.
+      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 5500 });
+      assert.equal(await page.locator('.splash-skip').count(), 0);
       assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
+      assert.ok(await page.locator('.arcade-home').count() === 1);
+      assert.equal(requests(), 2);
+      assert.deepEqual(pageErrors, []);
+    } finally { await browser.close(); }
+  });
+
+  test(`[${engine.name}] authenticated players may skip the intro without bypassing session checks`, async () => {
+    const { browser, page, pageErrors, requests } = await open(engine, { failFirst: true });
+    try {
+      await page.locator('.splash-retry').waitFor({ state: 'visible', timeout: 4000 });
+      assert.equal(await page.locator('.splash-skip').isVisible(), false);
+      assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
+      await page.locator('.splash-retry').tap();
+      await page.locator('.splash-skip').waitFor({ state: 'visible', timeout: 6500 });
+      assert.equal(await page.locator('#app').evaluate(el => el.inert), true);
+      await page.locator('.splash-skip').tap();
+      await page.locator('#opening-splash.splash-active').waitFor({ state: 'hidden', timeout: 3500 });
+      assert.equal(await page.locator('#app').evaluate(el => el.inert), false);
+      assert.equal(await page.locator('#app').getAttribute('aria-hidden'), null);
       assert.ok(await page.locator('.arcade-home').count() === 1);
       assert.equal(requests(), 2);
       assert.deepEqual(pageErrors, []);
