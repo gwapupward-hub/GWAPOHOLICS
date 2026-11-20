@@ -23,7 +23,7 @@ export function createToneAdapter({ Tone, enabled = false, getSettings = () => (
       if (!synth) synth = new Tone.Synth({ oscillator: { type: "sine" }, envelope: { attack: 0.02, decay: 0.12, sustain: 0.1, release: 0.25 } }).toDestination();
       const now = Tone.now();
       // Avoid stacked melodies when a user taps repeatedly.
-      if (now < nextAvailableAt) return false;
+      if (now < nextAvailableAt) return true; // handled: suppress native fallback too
       const start = now + 0.015;
       for (const [i, note] of pitches[event].entries()) synth.triggerAttackRelease(note, "16n", start + i * 0.11, Math.min(0.4, Number(settings.effectsVolume ?? 0.3) * 0.4));
       nextAvailableAt = start + pitches[event].length * 0.11 + 0.08;
