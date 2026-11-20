@@ -58,7 +58,7 @@ export function createOpeningSplash({
       <span class="splash-deck">EVERY EMPIRE STARTS WITH A MOVE.</span>
     </div>
     <div class="splash-boot">
-      <div class="splash-boot-head"><span>EMPIRE OS <b>◉</b></span><span>SEASON 01 / ONLINE</span></div>
+      <div class="splash-boot-head"><span>EMPIRE OS <b>◉</b></span><span>SEASON 01 / BOOTING</span></div>
       <div class="splash-meter" role="progressbar" aria-label="Opening sequence" aria-valuemin="0" aria-valuemax="100" aria-valuenow="8"><span class="splash-meter-fill"></span></div>
       <p class="splash-status" role="status" aria-live="polite" aria-atomic="true">INITIALIZING EMPIRE...</p>
       <button class="splash-retry" type="button" hidden>RETRY SECURE CONNECTION ↗</button>
