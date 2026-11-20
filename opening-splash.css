@@ -227,3 +227,213 @@ html.splash-open,html.splash-open body{overscroll-behavior:none}
   .boot-auth-gate{max-width:100%;overflow-x:clip}
   .boot-auth-gate .arcade-title{font-size:clamp(38px,12vw,49px);line-height:1;max-width:100%;overflow-wrap:anywhere}
 }
+
+
+/* THREE-ACT LUXURY/STREET CUT
+ * GPU-only animation surfaces: opacity and transforms. Keep the palette quiet:
+ * near-black, GWAP green and just a champagne-gold highlight for ascendancy.
+ */
+#opening-splash .splash-scene-opening,
+#opening-splash .splash-scene-wealth,
+#opening-splash .splash-scene-loading{pointer-events:none}
+#opening-splash .splash-center.splash-scene-opening{
+  animation:splash-act-out .78s cubic-bezier(.22,1,.36,1) var(--splash-opening-out-delay,6280ms) both;
+}
+#opening-splash .splash-title{
+  animation:splash-soft-in .01s linear var(--splash-title-delay,3000ms) both;
+}
+#opening-splash .splash-title .splash-letter{
+  display:inline-block;color:#f4f7ee;opacity:0;
+  animation:splash-letter-spring .82s cubic-bezier(.18,.88,.29,1) calc(var(--splash-title-delay,3000ms) + var(--letter-delay,0ms)) both;
+}
+#opening-splash .splash-title .splash-letter.is-green{color:var(--green,#13dd13)}
+#opening-splash .splash-tagline{
+  animation:splash-soft-in .01s linear var(--splash-tagline-delay,4220ms) both;
+}
+#opening-splash .splash-tagline .splash-word{
+  display:inline-block;font-style:normal;opacity:0;
+  animation:splash-word-spring .9s cubic-bezier(.18,.88,.29,1) calc(var(--splash-tagline-delay,4220ms) + var(--word-delay,0ms)) both;
+}
+#opening-splash .splash-tagline strong.splash-word{color:var(--orange,#ff933b)}
+
+/* Act II: the word itself is the luxury reveal. Nothing crowds the center. */
+#opening-splash .splash-wealth{
+  position:absolute;z-index:3;inset:0;
+  display:flex;flex-direction:column;justify-content:center;align-items:center;
+  text-align:center;isolation:isolate;overflow:hidden;
+  padding:calc(var(--splash-safe-t) + 35px) calc(var(--splash-safe-r) + 12px)
+          calc(var(--splash-safe-b) + 35px) calc(var(--splash-safe-l) + 12px);
+  opacity:0;
+  animation:
+    splash-act-in .88s cubic-bezier(.22,1,.36,1) var(--splash-wealth-delay,7020ms) both,
+    splash-act-out .88s cubic-bezier(.22,1,.36,1) var(--splash-wealth-out-delay,10820ms) forwards;
+}
+#opening-splash .splash-wealth-orbit{
+  position:absolute;z-index:-1;border-radius:50%;pointer-events:none;
+  border:1px solid #e0bf8040;
+  width:min(88vw,410px);height:min(88vw,410px);
+  opacity:.26;transform:rotate(-12deg) scale(.95);
+  animation:splash-orbit-breathe 8s ease-in-out infinite alternate;
+}
+#opening-splash .splash-orbit-two{
+  width:min(67vw,305px);height:min(67vw,305px);
+  border-color:#13dd1320;animation-delay:-2s;
+}
+#opening-splash .splash-wealth-kicker{
+  display:block;letter-spacing:.3em;font-size:10px;font-weight:800;color:#d4b67e;
+  margin-bottom:26px;opacity:0;
+  animation:splash-soft-in .8s cubic-bezier(.22,1,.36,1)
+    calc(var(--splash-wealth-delay,7020ms) + 200ms) both;
+}
+#opening-splash .splash-wealth-word{
+  max-width:100%;margin:0;white-space:nowrap;line-height:.87;
+  font:800 clamp(37px,10.2vw,65px)/.92 var(--display,'Barlow Condensed',Impact,sans-serif);
+  letter-spacing:.004em;
+  color:#e5c78e;opacity:1;
+}
+#opening-splash .splash-wealth-word .splash-letter{
+  display:inline-block;opacity:0;
+  animation:splash-letter-spring .86s cubic-bezier(.18,.88,.29,1)
+    calc(var(--splash-wealth-word-delay,7470ms) + var(--letter-delay,0ms)) both;
+}
+#opening-splash .splash-wealth-rule{
+  display:flex;align-items:center;justify-content:center;gap:12px;
+  font-size:14px;color:#cda66b;opacity:0;margin-top:23px;
+  animation:splash-soft-in .8s cubic-bezier(.22,1,.36,1)
+    calc(var(--splash-wealth-sub-delay,8730ms) - 150ms) both;
+}
+#opening-splash .splash-wealth-rule:before,
+#opening-splash .splash-wealth-rule:after{
+  content:"";display:block;width:52px;height:1px;background:#a18b5c5c;
+}
+#opening-splash .splash-wealth-sub{
+  max-width:100%;margin:18px 0 0;
+  font:900 clamp(21px,6.2vw,33px)/1.12 var(--display,'Barlow Condensed',Impact,sans-serif);
+  letter-spacing:.09em;color:#f4f7ee;opacity:0;
+  animation:splash-soft-in .86s cubic-bezier(.22,1,.36,1)
+    var(--splash-wealth-sub-delay,8730ms) both;
+}
+#opening-splash .splash-wealth-sub strong{color:var(--green,#13dd13)}
+#opening-splash .splash-wealth-sub em{font-style:normal;color:#e5c78e}
+#opening-splash .splash-wealth-note{
+  max-width:300px;margin:16px auto 0;
+  font:700 9px/1.8 var(--body,'DM Sans',sans-serif);
+  letter-spacing:.12em;color:#aab4a5;opacity:0;
+  animation:splash-soft-in .8s cubic-bezier(.22,1,.36,1)
+    calc(var(--splash-wealth-sub-delay,8730ms) + 600ms) both;
+}
+#opening-splash .splash-wealth-filigree{
+  position:absolute;bottom:calc(var(--splash-safe-b) + 54px);
+  font:800 9px/1 var(--body,'DM Sans',sans-serif);letter-spacing:.4em;
+  color:#bfa2718a;opacity:0;
+  animation:splash-soft-in .8s ease
+    calc(var(--splash-wealth-sub-delay,8730ms) + 600ms) both;
+}
+
+/* Act III: stand-alone, genuine loading screen: no overlapping origin copy. */
+#opening-splash .splash-boot.splash-scene-loading{
+  position:absolute;z-index:4;inset:0;left:0;right:0;bottom:0;
+  display:flex;flex-direction:column;justify-content:center;align-items:center;
+  min-width:0;width:100%;height:100%;margin:0;
+  padding:calc(var(--splash-safe-t) + 36px) calc(var(--splash-safe-r) + 22px)
+          calc(var(--splash-safe-b) + 36px) calc(var(--splash-safe-l) + 22px);
+  text-align:center;opacity:0;
+  animation:splash-act-in .95s cubic-bezier(.22,1,.36,1) var(--splash-loading-delay,11610ms) both;
+}
+#opening-splash .splash-loader-kicker{
+  color:#d2ba88;font:800 9px/1.4 var(--body,'DM Sans',sans-serif);
+  letter-spacing:.24em;margin-bottom:38px;
+}
+#opening-splash .splash-loader-mark{
+  position:relative;width:128px;height:128px;display:grid;place-items:center;
+  margin-bottom:28px;
+}
+#opening-splash .splash-loader-mark img{
+  display:block;width:76px;height:76px;object-fit:contain;
+  padding:13px;border-radius:18px;background:var(--green,#13dd13);
+  box-shadow:0 0 0 6px #13dd1315,0 14px 46px #13dd1329;
+}
+#opening-splash .splash-loader-ring{
+  position:absolute;inset:0;border-radius:50%;
+  border:1px solid #d6b47883;border-left-color:transparent;border-bottom-color:#13dd1355;
+  animation:splash-loader-turn 11s linear infinite;
+}
+#opening-splash .splash-loader-ring-inner{
+  inset:11px;border-color:#13dd134d;border-top-color:transparent;border-right-color:#e4c78e55;
+  animation-duration:15s;animation-direction:reverse;
+}
+#opening-splash .splash-loader-title{
+  font:900 clamp(29px,8.6vw,47px)/1 var(--display,'Barlow Condensed',Impact,sans-serif);
+  letter-spacing:.045em;white-space:nowrap;margin:0;color:#f2f6ed;
+}
+#opening-splash .splash-loader-title em{font-style:normal;color:var(--green,#13dd13)}
+#opening-splash .splash-loader-caption{
+  margin:12px 0 0;color:#a6b4a1;font:700 9px/1.6 var(--body,'DM Sans',sans-serif);
+  letter-spacing:.14em;
+}
+#opening-splash .splash-loading-progress{width:100%;max-width:394px;margin-top:52px;pointer-events:auto}
+#opening-splash .splash-loading-progress .splash-status{margin-top:15px}
+#opening-splash .splash-loading-progress .splash-footnote{margin-top:34px}
+
+/* The secure error/retry stage must appear regardless of which act was showing.
+ * A retry holds this dedicated scene rather than abruptly restarting the film.
+ */
+#opening-splash.splash-stalled .splash-scene-opening,
+#opening-splash.splash-stalled .splash-scene-wealth,
+#opening-splash.splash-reconnecting .splash-scene-opening,
+#opening-splash.splash-reconnecting .splash-scene-wealth{
+  opacity:0!important;animation:none!important;
+}
+#opening-splash.splash-stalled .splash-scene-loading,
+#opening-splash.splash-reconnecting .splash-scene-loading{
+  opacity:1!important;animation:none!important;
+}
+
+/* Phone reachability / Telegram safe areas / landscape-height constraints. */
+@media(max-height:650px){
+  #opening-splash .splash-wealth-kicker{margin-bottom:14px}
+  #opening-splash .splash-wealth-rule{margin-top:14px}
+  #opening-splash .splash-wealth-sub{margin-top:10px}
+  #opening-splash .splash-wealth-filigree{bottom:calc(var(--splash-safe-b) + 16px)}
+  #opening-splash .splash-loader-kicker{margin-bottom:17px}
+  #opening-splash .splash-loader-mark{transform:scale(.75);margin-bottom:0}
+  #opening-splash .splash-loading-progress{margin-top:20px}
+  #opening-splash .splash-loading-progress .splash-footnote{margin-top:12px}
+}
+
+/* Reduced-motion is a concise, genuinely static authenticated entry. */
+#opening-splash.story-static .splash-scene-opening,
+#opening-splash.story-static .splash-scene-wealth{display:none!important}
+#opening-splash.story-static .splash-scene-loading{
+  opacity:1!important;animation:none!important;
+}
+#opening-splash.story-static .splash-loader-ring,
+#opening-splash.story-static .splash-letter,
+#opening-splash.story-static .splash-word{animation:none!important;opacity:1!important}
+@media(prefers-reduced-motion:reduce){
+  #opening-splash .splash-scene-opening,
+  #opening-splash .splash-scene-wealth{display:none!important}
+  #opening-splash .splash-scene-loading{opacity:1!important;animation:none!important}
+  #opening-splash .splash-loader-ring,
+  #opening-splash .splash-letter,
+  #opening-splash .splash-word{animation:none!important;opacity:1!important}
+}
+
+@keyframes splash-act-in{from{opacity:0}to{opacity:1}}
+@keyframes splash-act-out{from{opacity:1}to{opacity:0}}
+@keyframes splash-letter-spring{
+  0%{opacity:0;transform:translate3d(0,15px,0) scale(.92)}
+  50%{opacity:1;transform:translate3d(0,-2px,0) scale(1.028)}
+  78%{opacity:1;transform:translate3d(0,1px,0) scale(.993)}
+  100%{opacity:1;transform:translate3d(0,0,0) scale(1)}
+}
+@keyframes splash-word-spring{
+  0%{opacity:0;transform:translate3d(0,11px,0) scale(.94)}
+  55%{opacity:1;transform:translate3d(0,-2px,0) scale(1.018)}
+  100%{opacity:1;transform:translate3d(0,0,0) scale(1)}
+}
+@keyframes splash-orbit-breathe{
+  from{opacity:.2;transform:rotate(-12deg) scale(.96)}
+  to{opacity:.3;transform:rotate(12deg) scale(1.015)}
+}
+@keyframes splash-loader-turn{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
